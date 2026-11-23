@@ -134,10 +134,13 @@ from a local Keycloak 26.8.2 with a throwaway user, same password policy as prod
        (iCloud Keychain, Google Password Manager; known by AAGUID).
      - A wrong value means the login is refused, not let through. Fallback: the user registers the passkey again
        (invite, C4).
+   - SGNL's real passkeys (2026-11-23, read-only lookup): all 3 are synced passkeys (2 Bitwarden, 1 iCloud Keychain), so
+     `backup_eligible: true`. Confirm in the C8 rehearsal.
 5. **Login matrix of SGNL's apps (config study; the live login test is M1/M4).**
    - There are 12 OIDC clients. The details, with real hostnames, are in SGNL's private instance repo.
    - **Unchanged or Authelia-config only (7):**
-     - Vaultwarden: stores issuer + `sub`, so the issuer must match byte for byte, including any trailing slash.
+     - Vaultwarden: stores `<issuer>/<sub>`. The stored issuer has no trailing slash, which is the same form Authelia
+       emits in check 1.
      - Bulwark and the Stalwart web UI: opaque access tokens validated via userinfo, which is Authelia's default.
      - Forgejo and Dashy: read `groups` from the ID token, so they need a `claims_policy` that puts `groups` (and
        email/name) into the ID token. By default Authelia's ID token carries no profile claims (verified in check 1's
