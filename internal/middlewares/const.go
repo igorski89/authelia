@@ -127,6 +127,7 @@ const (
 	UserValueKeyOpenIDConnectResponseModeFormPost
 	UserValueKeyRawURI
 	UserValueRateLimitExempt
+	UserValueKeyBearerClientID
 )
 
 // Router user value keys.

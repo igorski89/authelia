@@ -24,6 +24,12 @@ const (
 
 	ScopeAutheliaBearerAuthz = "authelia.bearer.authz"
 	ScopeAutheliaPAM         = "authelia.pam"
+
+	// ScopeAutheliaAdminRead permits reading users and groups via the administration API.
+	ScopeAutheliaAdminRead = "authelia.admin.read"
+
+	// ScopeAutheliaAdminWrite permits creating, changing, and deleting users and groups via the administration API.
+	ScopeAutheliaAdminWrite = "authelia.admin.write"
 )
 
 const (

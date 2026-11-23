@@ -398,6 +398,7 @@ func handlerMain(config *schema.Configuration, providers middlewares.Providers) 
 
 	if providers.OpenIDConnect != nil {
 		RegisterOpenIDConnectRoutes(r, config, providers)
+		RegisterAdminRoutes(r, config, providers)
 	}
 
 	r.RedirectFixedPath = false
@@ -414,6 +415,17 @@ func handlerMain(config *schema.Configuration, providers middlewares.Providers) 
 	middleware := middlewares.NewTrustedProxies(config.Server.Headers.TrustedProxies)
 
 	return middleware(handler), nil
+}
+
+// RegisterAdminRoutes handles registration of the administration API routes. The administration API is authorized
+// only with OAuth 2.0 Access Tokens issued by this server, so it requires the OpenID Connect 1.0 provider.
+func RegisterAdminRoutes(r *router.Router, config *schema.Configuration, providers middlewares.Providers) {
+	middlewareAdminRead := middlewares.NewBridgeBuilder(*config, providers).
+		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
+		WithPostMiddlewares(middlewares.RequireBearerClientCredentials(oidc.ScopeAutheliaAdminRead)).
+		Build()
+
+	r.GET("/api/admin/whoami", middlewareAdminRead(handlers.AdminWhoAmIGET))
 }
 
 // RegisterOpenIDConnectRoutes handles registration of OpenID Connect 1.0 routes.
