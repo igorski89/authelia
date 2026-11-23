@@ -58,6 +58,10 @@ Fork-only files (no upstream counterpart): `FORK.md`, `sgnl/`, `.github/workflow
     --build-arg BUILD_TAG=v4.40.0-sgnl.1 --build-arg BUILD_COMMIT="$(git rev-parse HEAD)" -t authelia-sgnl .
   ```
 
+- Upstream's own workflows on the fork:
+  - disabled in the Actions settings: `scorecard`, `pr-commentary`, `pr-labels`, `contributors` (upstream-only);
+  - left active: `codeql-analysis` (weekly), `slsa` (fires only on upstream-style `vX.Y.Z` tags);
+  - the files themselves are untouched.
 - Local Go: the toolchain is pinned in `go.mod`. Use `mise x go@1.27.4 -- go ...` so that no tool file lands in the tree.
 
 ## Sync log
@@ -96,8 +100,10 @@ from a local Keycloak 26.8.2 with a throwaway user, same password policy as prod
      - discovery reports `issuer` = `https://<host>/realms/<realm>`, and all endpoints are under it;
      - a full authorization code flow (first factor, consent, code, token) returns an ID token with
        `iss` = `https://<host>/realms/<realm>`.
+   - Proven for the OIDC API flow only: the scratch build had an empty frontend stub. The login portal (web UI and its
+     asset paths) under a two-segment prefix is **unverified**; browser test in M1.
    - Caveat: the server also answers on `/` with issuer `https://<host>`, so the reverse proxy must route only the
-     prefix.
+     prefix (or redirect `/` to it).
    - Consequence: keeping the Keycloak issuer needs a fork change to one upstream file (the validator). It is a candidate
      for M1, listed under "Touched upstream files" once made. Upstream may accept it (multi-segment base paths).
 2. **Keycloak password hashes: usable as-is.**
@@ -123,7 +129,8 @@ from a local Keycloak 26.8.2 with a throwaway user, same password policy as prod
        creates a random handle).
    - **Field mapping.**
      - Keycloak `credentialId` is standard base64, which matches Authelia's `kid`.
-     - Keycloak `credentialPublicKey` is base64url COSE (webauthn4j), which must be re-encoded as standard base64 for
+     - Keycloak `credentialPublicKey` is base64url CBOR of the COSE key (keycloak 26.8.2
+       `CredentialPublicKeyConverter.java`, `convertToDatabaseColumn`). It must be re-encoded as standard base64 for
        `public_key`.
      - `aaguid`, `counter` and `transports` map directly.
      - `rpid` must be the same host as Keycloak's RP ID.
@@ -134,11 +141,13 @@ from a local Keycloak 26.8.2 with a throwaway user, same password policy as prod
        (iCloud Keychain, Google Password Manager; known by AAGUID).
      - A wrong value means the login is refused, not let through. Fallback: the user registers the passkey again
        (invite, C4).
-   - SGNL's real passkeys (2026-11-23, read-only lookup): all 3 are synced passkeys (2 Bitwarden, 1 iCloud Keychain), so
-     `backup_eligible: true`. Confirm in the C8 rehearsal.
+   - **Discoverable flag.** With `webauthn.enable_passkey_upgrade` off (the default), passkey login loads only
+     credentials with `discoverable = TRUE` (`internal/handlers/webauthn.go`, `LoadWebAuthnPasskeyCredentialsByUsername`;
+     `internal/storage/sql_provider_queries.go:270,275`). C8 must set `discoverable: true` for Keycloak's passwordless
+     credentials.
 5. **Login matrix of SGNL's apps (config study; the live login test is M1/M4).**
    - There are 12 OIDC clients. The details, with real hostnames, are in SGNL's private instance repo.
-   - **Unchanged or Authelia-config only (7):**
+   - **Unchanged or Authelia-config only (6):**
      - Vaultwarden: stores `<issuer>/<sub>`. The stored issuer has no trailing slash, which is the same form Authelia
        emits in check 1.
      - Bulwark and the Stalwart web UI: opaque access tokens validated via userinfo, which is Authelia's default.
