@@ -48,6 +48,10 @@ jobs:
         with:
           go-version-file: 'go.mod'
       - name: 'Unit tests (as authelia-scripts unittest --buildkite)'
+        env:
+          # Upstream's unit tests depend on the machine's time zone and pass on its Buildkite agents' zone only
+          # (verified 2026-11-23 on b935f93f: internal/model fails under UTC and Europe/Berlin). See FORK.md.
+          TZ: 'Australia/Melbourne'
         run: |
           # shellcheck disable=SC2046
           go test -race -covermode=atomic $(go list ./... | grep -v suites)
@@ -85,7 +89,7 @@ jobs:
         with:
           args: 'lint --lines'
       - name: 'yamllint'
-        run: 'pipx run yamllint .'
+        run: 'yamllint .'
 
   frontend:
     name: 'Frontend build, test, lint'
@@ -150,3 +154,4 @@ jobs:
             BUILD_TAG=${{ steps.version.outputs.tag }}
             BUILD_BRANCH=sgnl
           tags: 'authelia-sgnl:ci'
+...
