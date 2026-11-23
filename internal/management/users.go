@@ -134,6 +134,9 @@ type Revocation struct {
 
 	// Tokens is the number of OAuth 2.0 and OpenID Connect 1.0 sessions and pre-configured consents revoked.
 	Tokens int64 `json:"tokens"`
+
+	// Links is the number of pending links and one-time codes sent by email (such as invites) revoked.
+	Links int64 `json:"links"`
 }
 
 // Group is a group of the database authentication backend.
@@ -289,6 +292,15 @@ func (s *Service) RevokeUser(ctx context.Context, username, clientID string) (re
 		}
 
 		details := map[string]any{"tokens": revocation.Tokens}
+
+		// A full logout also revokes pending links and codes sent by email, such as an invite, so none outlives it.
+		if clientID == "" {
+			if revocation.Links, err = s.store.RevokePendingIdentityVerificationsByUsername(ctx, username, ""); err != nil {
+				return err
+			}
+
+			details["links"] = revocation.Links
+		}
 
 		if clientID != "" {
 			details["client_id"] = clientID

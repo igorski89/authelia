@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net"
 	"testing"
 	"time"
 
@@ -73,4 +74,48 @@ func TestSQLProviderRevokeOAuth2SessionsByUsername(t *testing.T) {
 	n, err = provider.RevokeOAuth2SessionsByUsername(ctx, "nobody", "")
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), n)
+}
+
+func TestSQLProviderRevokePendingIdentityVerificationsByUsername(t *testing.T) {
+	provider := newTestSQLiteProvider(t)
+	require.NoError(t, provider.StartupCheck())
+
+	ctx := context.Background()
+
+	save := func(username, action string) uuid.UUID {
+		jti := uuid.New()
+
+		require.NoError(t, provider.SaveIdentityVerification(ctx, model.NewIdentityVerification(jti, username, action, net.ParseIP("127.0.0.1"), time.Hour)))
+
+		return jti
+	}
+
+	invite, reset, other := save("john", "account_setup"), save("john", "reset_password"), save("jane", "account_setup")
+	consumed := save("john", "account_setup")
+
+	require.NoError(t, provider.ConsumeIdentityVerification(ctx, consumed.String(), model.NullIP{}))
+
+	// A revoked link is reported with an error rather than as not found.
+	found := func(jti uuid.UUID) bool {
+		ok, err := provider.FindIdentityVerification(ctx, jti.String())
+		if err != nil {
+			require.EqualError(t, err, "the token has been revoked")
+
+			return false
+		}
+
+		return ok
+	}
+
+	n, err := provider.RevokePendingIdentityVerificationsByUsername(ctx, "john", "account_setup")
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n, "only the pending link of the action")
+	assert.False(t, found(invite))
+	assert.True(t, found(reset))
+
+	n, err = provider.RevokePendingIdentityVerificationsByUsername(ctx, "john", "")
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n)
+	assert.False(t, found(reset))
+	assert.True(t, found(other), "other users are not touched")
 }

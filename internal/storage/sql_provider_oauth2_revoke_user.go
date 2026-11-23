@@ -7,6 +7,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 const (
@@ -58,6 +59,62 @@ func (p *SQLProvider) RevokeOAuth2SessionsByUsername(ctx context.Context, userna
 			}
 
 			if n, err = result.RowsAffected(); err == nil {
+				revoked += n
+			}
+		}
+
+		return nil
+	})
+
+	return revoked, err
+}
+
+const (
+	// queryFmtRevokePendingByUsername revokes the pending (neither consumed nor revoked) rows of the identity
+	// verification or one-time code table of a user.
+	queryFmtRevokePendingByUsername = `
+		UPDATE %s
+		SET revoked = ?
+		WHERE username = ? AND consumed IS NULL AND revoked IS NULL;`
+
+	queryFmtRevokePendingIdentityVerificationsByUsernameAndAction = `
+		UPDATE %s
+		SET revoked = ?
+		WHERE username = ? AND action = ? AND consumed IS NULL AND revoked IS NULL;`
+)
+
+// RevokePendingIdentityVerificationsByUsername revokes the identity verification links and one-time codes of the user
+// which were neither used nor revoked yet, of every action and intent when the action is empty, or only the identity
+// verification links of the given action otherwise. It returns the number of rows revoked.
+func (p *SQLProvider) RevokePendingIdentityVerificationsByUsername(ctx context.Context, username, action string) (revoked int64, err error) {
+	now := time.Now().UTC()
+
+	type statement struct {
+		query string
+		args  []any
+	}
+
+	var statements []statement
+
+	if action == "" {
+		statements = []statement{
+			{fmt.Sprintf(queryFmtRevokePendingByUsername, tableIdentityVerification), []any{now, username}},
+			{fmt.Sprintf(queryFmtRevokePendingByUsername, tableOneTimeCode), []any{now, username}},
+		}
+	} else {
+		statements = []statement{
+			{fmt.Sprintf(queryFmtRevokePendingIdentityVerificationsByUsernameAndAction, tableIdentityVerification), []any{now, username, action}},
+		}
+	}
+
+	err = p.inTransaction(ctx, func(ctx context.Context) (err error) {
+		for _, s := range statements {
+			result, err := p.conn(ctx).ExecContext(ctx, p.db.Rebind(s.query), s.args...)
+			if err != nil {
+				return fmt.Errorf("error revoking the pending identity verifications of user '%s': %w", username, err)
+			}
+
+			if n, err := result.RowsAffected(); err == nil {
 				revoked += n
 			}
 		}

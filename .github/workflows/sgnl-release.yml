@@ -107,10 +107,7 @@ jobs:
         working-directory: 'digests'
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          refs=()
-          for digest in *; do
-            refs+=("${image}@sha256:${digest}")
-          done
+          refs=(); for digest in *; do refs+=("${image}@sha256:${digest}"); done
           docker buildx imagetools create -t "${image}:${GITHUB_REF_NAME}" "${refs[@]}"
           docker buildx imagetools inspect "${image}:${GITHUB_REF_NAME}"
 ...

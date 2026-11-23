@@ -135,6 +135,10 @@ type Provider interface {
 	// of the user, or only those of the given client when the client identifier isn't empty.
 	RevokeOAuth2SessionsByUsername(ctx context.Context, username, clientID string) (revoked int64, err error)
 
+	// RevokePendingIdentityVerificationsByUsername revokes the identity verification links and one-time codes of the
+	// user which were neither used nor revoked yet, or only the identity verification links of the given action.
+	RevokePendingIdentityVerificationsByUsername(ctx context.Context, username, action string) (revoked int64, err error)
+
 	// AppendAdministrationAudit records a change made through the administration API or the users and groups commands.
 	AppendAdministrationAudit(ctx context.Context, entry model.AdministrationAuditEntry) (err error)
 
