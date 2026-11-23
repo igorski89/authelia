@@ -6804,7 +6804,7 @@ func TestValidateOIDCDefaultClaimsPolicy(t *testing.T) {
 	newConfig := func(def string) *schema.Configuration {
 		return &schema.Configuration{
 			IdentityProviders: schema.IdentityProviders{
-				OIDC: &schema.IdentityProvidersOpenIDConnect{
+				OIDC: &schema.IdentityProvidersOpenIDConnect{ //nolint:gosec // The HMAC secret is a test value.
 					HMACSecret:          "rLABDrx87et5KvRHVUgTm3pezWWd8LMN",
 					JSONWebKeys:         []schema.JWK{{Key: keyRSA2048, CertificateChain: certRSA2048}},
 					DefaultClaimsPolicy: def,
