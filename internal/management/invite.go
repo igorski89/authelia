@@ -70,7 +70,7 @@ func (s *Service) CreateInvite(ctx context.Context, username string, lifespan ti
 	invite = &Invite{User: user, Verification: model.NewIdentityVerification(jti, user.Username, ActionAccountSetup, ip, lifespan)}
 
 	err = s.transaction(ctx, func(ctx context.Context) (err error) {
-		if _, err = s.store.RevokePendingIdentityVerificationsByUsername(ctx, user.Username, ActionAccountSetup); err != nil {
+		if _, err = s.store.RevokeIdentityVerificationsByUsername(ctx, user.Username, ActionAccountSetup); err != nil {
 			return err
 		}
 

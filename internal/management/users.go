@@ -295,7 +295,7 @@ func (s *Service) RevokeUser(ctx context.Context, username, clientID string) (re
 
 		// A full logout also revokes pending links and codes sent by email, such as an invite, so none outlives it.
 		if clientID == "" {
-			if revocation.Links, err = s.store.RevokePendingIdentityVerificationsByUsername(ctx, username, ""); err != nil {
+			if revocation.Links, err = s.store.RevokeIdentityVerificationsByUsername(ctx, username, ""); err != nil {
 				return err
 			}
 

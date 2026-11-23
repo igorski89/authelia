@@ -19,16 +19,15 @@ api, A = Client(), admin_headers()
 
 def invite(username, lifespan=None):
     """Invites the user and returns the status, the response, and the token of the link mailed to it."""
-    before = os.path.getsize(NOTIFICATIONS) if os.path.exists(NOTIFICATIONS) else 0
     st, _, b = api.req('POST', f'/api/admin/users/{username}/invite', {'lifespan': lifespan} if lifespan else None, A)
 
     token = None
 
     if st == 202:
+        # The filesystem notifier replaces the file with each mail, so the last link is the new one.
         with open(NOTIFICATIONS) as f:
-            f.seek(before)
-            match = re.search(r'/realms/test/account-setup\?token=([A-Za-z0-9._-]+)', f.read())
-            token = match.group(1) if match else None
+            links = re.findall(r'/realms/test/account-setup\?token=([A-Za-z0-9._-]+)', f.read())
+            token = links[-1] if links else None
 
     return st, b, token
 
@@ -78,6 +77,18 @@ api.req('PATCH', '/api/admin/users/invited', {'disabled': True}, A)
 api.req('PATCH', '/api/admin/users/invited', {'disabled': False}, A)
 _, finish, _ = redeem(new)
 check('disabling a user revokes its link, also after enabling it again', finish == 'KO', finish)
+
+# A session which redeemed a link but has not set the password yet loses it when the link is superseded or the user
+# is disabled.
+for name, supersede in [('a new invite', lambda: invite('invited')),
+                        ('disabling the user', lambda: (api.req('PATCH', '/api/admin/users/invited', {'disabled': True}, A),
+                                                        api.req('PATCH', '/api/admin/users/invited', {'disabled': False}, A)))]:
+    st, b, pending = invite('invited')
+    half = Client()
+    _, _, f = half.req('POST', '/api/account-setup/identity/finish', {'token': pending})
+    supersede()
+    _, _, setup = half.req('POST', '/api/account-setup', {'password': 'a-hijacked-password-1'})
+    check(f'{name} ends a half-finished setup', json.loads(f).get('status') == 'OK' and json.loads(setup).get('status') == 'KO', f'{f} {setup}')
 
 st, b, short = invite('invited', '1s')
 time.sleep(2)

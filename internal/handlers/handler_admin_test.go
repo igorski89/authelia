@@ -366,6 +366,14 @@ func mustMintTestAdminToken(t *testing.T, mock *mocks.MockAutheliaCtx, clientCre
 func newTestAdminService(t *testing.T) *management.Service {
 	t.Helper()
 
+	service, _ := newTestAdminServiceWithStore(t)
+
+	return service
+}
+
+func newTestAdminServiceWithStore(t *testing.T) (*management.Service, storage.Provider) {
+	t.Helper()
+
 	config := &schema.Configuration{
 		Storage: schema.Storage{
 			EncryptionKey: "authelia-test-key-not-a-secret-authelia-test-key-not-a-secret",
@@ -382,7 +390,7 @@ func newTestAdminService(t *testing.T) *management.Service {
 	service, err := management.New(&schema.AuthenticationBackendDatabase{Password: schema.DefaultCIPasswordConfig}, store, nil, nil)
 	require.NoError(t, err)
 
-	return service
+	return service, store
 }
 
 func TestAdminUsersAndGroupsHandlers(t *testing.T) {
@@ -478,7 +486,7 @@ func TestAdminHandlersReportServerErrorsWithoutDetails(t *testing.T) {
 }
 
 func TestAdminUserInvitePOST(t *testing.T) {
-	service := newTestAdminService(t)
+	service, store := newTestAdminServiceWithStore(t)
 
 	ctx := management.WithActor(context.Background(), "test")
 
@@ -534,6 +542,12 @@ func TestAdminUserInvitePOST(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, entries, 1)
 		assert.Equal(t, management.AuditActionUserInvite, entries[0].Action)
+
+		// The invite which could not be sent is revoked, so nothing redeemable is left: revoking the user's remaining
+		// invite links finds none.
+		n, err := store.RevokeIdentityVerificationsByUsername(ctx, "john", management.ActionAccountSetup)
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), n)
 	})
 
 	t.Run("ShouldRefuseBadLifespan", func(t *testing.T) {

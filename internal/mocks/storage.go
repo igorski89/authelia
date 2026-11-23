@@ -1341,6 +1341,21 @@ func (mr *MockStorageMockRecorder) RevokeIdentityVerification(ctx, jti, ip any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeIdentityVerification", reflect.TypeOf((*MockStorage)(nil).RevokeIdentityVerification), ctx, jti, ip)
 }
 
+// RevokeIdentityVerificationsByUsername mocks base method.
+func (m *MockStorage) RevokeIdentityVerificationsByUsername(ctx context.Context, username, action string) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RevokeIdentityVerificationsByUsername", ctx, username, action)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RevokeIdentityVerificationsByUsername indicates an expected call of RevokeIdentityVerificationsByUsername.
+func (mr *MockStorageMockRecorder) RevokeIdentityVerificationsByUsername(ctx, username, action any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeIdentityVerificationsByUsername", reflect.TypeOf((*MockStorage)(nil).RevokeIdentityVerificationsByUsername), ctx, username, action)
+}
+
 // RevokeOAuth2PushedAuthorizationSession mocks base method.
 func (m *MockStorage) RevokeOAuth2PushedAuthorizationSession(ctx context.Context, signature string) error {
 	m.ctrl.T.Helper()
@@ -1410,21 +1425,6 @@ func (m *MockStorage) RevokeOneTimeCode(ctx context.Context, id uuid.UUID, ip mo
 func (mr *MockStorageMockRecorder) RevokeOneTimeCode(ctx, id, ip any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeOneTimeCode", reflect.TypeOf((*MockStorage)(nil).RevokeOneTimeCode), ctx, id, ip)
-}
-
-// RevokePendingIdentityVerificationsByUsername mocks base method.
-func (m *MockStorage) RevokePendingIdentityVerificationsByUsername(ctx context.Context, username, action string) (int64, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RevokePendingIdentityVerificationsByUsername", ctx, username, action)
-	ret0, _ := ret[0].(int64)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// RevokePendingIdentityVerificationsByUsername indicates an expected call of RevokePendingIdentityVerificationsByUsername.
-func (mr *MockStorageMockRecorder) RevokePendingIdentityVerificationsByUsername(ctx, username, action any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokePendingIdentityVerificationsByUsername", reflect.TypeOf((*MockStorage)(nil).RevokePendingIdentityVerificationsByUsername), ctx, username, action)
 }
 
 // RevokeRecoveryCodesByUsername mocks base method.

@@ -53,6 +53,7 @@ func (s *UserSession) RequiresPersistence() bool {
 		s.TOTP != nil,
 		s.PasswordResetUsername != nil,
 		s.AccountSetupUsername != nil,
+		s.AccountSetupID != "",
 		s.Elevations.User != nil,
 		s.ExternalIdentity != nil,
 		s.ExternalIdentityPending != nil:

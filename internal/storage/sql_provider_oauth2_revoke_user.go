@@ -70,23 +70,31 @@ func (p *SQLProvider) RevokeOAuth2SessionsByUsername(ctx context.Context, userna
 }
 
 const (
-	// queryFmtRevokePendingByUsername revokes the pending (neither consumed nor revoked) rows of the identity
-	// verification or one-time code table of a user.
-	queryFmtRevokePendingByUsername = `
+	// queryFmtRevokeIdentityVerificationsByUsername revokes the identity verification links of a user which were not
+	// revoked yet, used or not: revoking a used link ends a process the link started, such as an account setup.
+	queryFmtRevokeIdentityVerificationsByUsername = `
+		UPDATE %s
+		SET revoked = ?
+		WHERE username = ? AND revoked IS NULL;`
+
+	queryFmtRevokeIdentityVerificationsByUsernameAndAction = `
+		UPDATE %s
+		SET revoked = ?
+		WHERE username = ? AND action = ? AND revoked IS NULL;`
+
+	// queryFmtRevokePendingOneTimeCodesByUsername revokes the one-time codes of a user which were neither used nor
+	// revoked yet.
+	queryFmtRevokePendingOneTimeCodesByUsername = `
 		UPDATE %s
 		SET revoked = ?
 		WHERE username = ? AND consumed IS NULL AND revoked IS NULL;`
-
-	queryFmtRevokePendingIdentityVerificationsByUsernameAndAction = `
-		UPDATE %s
-		SET revoked = ?
-		WHERE username = ? AND action = ? AND consumed IS NULL AND revoked IS NULL;`
 )
 
-// RevokePendingIdentityVerificationsByUsername revokes the identity verification links and one-time codes of the user
-// which were neither used nor revoked yet, of every action and intent when the action is empty, or only the identity
-// verification links of the given action otherwise. It returns the number of rows revoked.
-func (p *SQLProvider) RevokePendingIdentityVerificationsByUsername(ctx context.Context, username, action string) (revoked int64, err error) {
+// RevokeIdentityVerificationsByUsername revokes the identity verification links of the user which were not revoked
+// yet (used or not, so a process a used link started, such as an account setup, ends too) and its pending one-time
+// codes, of every action and intent when the action is empty, or only the identity verification links of the given
+// action otherwise. It returns the number of rows revoked.
+func (p *SQLProvider) RevokeIdentityVerificationsByUsername(ctx context.Context, username, action string) (revoked int64, err error) {
 	now := time.Now().UTC()
 
 	type statement struct {
@@ -98,12 +106,12 @@ func (p *SQLProvider) RevokePendingIdentityVerificationsByUsername(ctx context.C
 
 	if action == "" {
 		statements = []statement{
-			{fmt.Sprintf(queryFmtRevokePendingByUsername, tableIdentityVerification), []any{now, username}},
-			{fmt.Sprintf(queryFmtRevokePendingByUsername, tableOneTimeCode), []any{now, username}},
+			{fmt.Sprintf(queryFmtRevokeIdentityVerificationsByUsername, tableIdentityVerification), []any{now, username}},
+			{fmt.Sprintf(queryFmtRevokePendingOneTimeCodesByUsername, tableOneTimeCode), []any{now, username}},
 		}
 	} else {
 		statements = []statement{
-			{fmt.Sprintf(queryFmtRevokePendingIdentityVerificationsByUsernameAndAction, tableIdentityVerification), []any{now, username, action}},
+			{fmt.Sprintf(queryFmtRevokeIdentityVerificationsByUsernameAndAction, tableIdentityVerification), []any{now, username, action}},
 		}
 	}
 

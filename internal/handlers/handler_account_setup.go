@@ -5,6 +5,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/mail"
 	"net/url"
@@ -144,8 +145,26 @@ func sendAccountSetupMail(ctx *middlewares.AutheliaCtx, issuer *url.URL, invite 
 }
 
 // AccountSetupIdentityFinishPOST redeems an invite link, which can be used once, and lets the session set the
-// password of the invited user. The user must still exist and be enabled.
-var AccountSetupIdentityFinishPOST = middlewares.IdentityVerificationFinish(
+// password of the invited user. The user must still exist and be enabled. The identifier of the link is kept in the
+// session, so revoking the link (a new invite, or disabling the user) ends a setup which was not finished yet.
+func AccountSetupIdentityFinishPOST(ctx *middlewares.AutheliaCtx) {
+	var body middlewares.IdentityVerificationFinishBody
+
+	// The token is only read here to remember its identifier; the middleware verifies it before the setup starts.
+	if err := json.Unmarshal(ctx.PostBody(), &body); err == nil && body.Token != "" {
+		claims := jwt.RegisteredClaims{}
+
+		if _, _, err = jwt.NewParser().ParseUnverified(body.Token, &claims); err == nil {
+			ctx.SetUserValue(userValueKeyAccountSetupID, claims.ID)
+		}
+	}
+
+	accountSetupIdentityFinishVerified(ctx)
+}
+
+const userValueKeyAccountSetupID = "account_setup_id"
+
+var accountSetupIdentityFinishVerified = middlewares.IdentityVerificationFinish(
 	middlewares.IdentityVerificationFinishArgs{
 		ActionClaim: management.ActionAccountSetup,
 		IsTokenUserValidFunc: func(ctx *middlewares.AutheliaCtx, username string) bool {
@@ -158,6 +177,15 @@ var AccountSetupIdentityFinishPOST = middlewares.IdentityVerificationFinish(
 )
 
 func accountSetupIdentityFinish(ctx *middlewares.AutheliaCtx, username string) {
+	id, _ := ctx.UserValue(userValueKeyAccountSetupID).(string)
+
+	if id == "" {
+		ctx.GetLogger().Error("Error occurred during account setup: the invite link has no identifier")
+		ctx.SetJSONError(messageOperationFailed)
+
+		return
+	}
+
 	userSession, err := ctx.GetSession()
 	if err != nil {
 		ctx.GetLogger().WithError(err).Error("Error occurred retrieving the session during account setup")
@@ -167,6 +195,7 @@ func accountSetupIdentityFinish(ctx *middlewares.AutheliaCtx, username string) {
 	}
 
 	userSession.AccountSetupUsername = &username
+	userSession.AccountSetupID = id
 
 	if err = ctx.SaveSession(&userSession); err != nil {
 		ctx.GetLogger().WithError(err).Error("Error occurred saving the session during account setup")
@@ -176,6 +205,29 @@ func accountSetupIdentityFinish(ctx *middlewares.AutheliaCtx, username string) {
 	}
 
 	ctx.ReplyOK()
+}
+
+// accountSetupLinkValid checks again that the invite link the session redeemed belongs to the user and was not
+// revoked since.
+func accountSetupLinkValid(ctx *middlewares.AutheliaCtx, id, username string) bool {
+	verification, err := ctx.Providers.StorageProvider.LoadIdentityVerification(ctx, id)
+
+	switch {
+	case err != nil:
+		ctx.GetLogger().WithError(err).WithField("username", username).Error("Error occurred loading the invite link during account setup")
+
+		return false
+	case verification.Action != management.ActionAccountSetup, verification.Username != username:
+		ctx.GetLogger().WithField("username", username).Error("Error occurred during account setup: the invite link does not belong to the user")
+
+		return false
+	case verification.RevokedAt.Valid:
+		ctx.GetLogger().WithField("username", username).Error("Error occurred during account setup: the invite link was revoked since it was opened")
+
+		return false
+	default:
+		return true
+	}
 }
 
 // AccountSetupPOST sets the password of the invited user whose link the session redeemed, then logs the user in with
@@ -192,6 +244,12 @@ func AccountSetupPOST(service *management.Service) middlewares.RequestHandler {
 		}
 
 		username := *userSession.AccountSetupUsername
+
+		if !accountSetupLinkValid(ctx, userSession.AccountSetupID, username) {
+			ctx.SetJSONError(messageUnableToResetPassword)
+
+			return
+		}
 
 		var body resetPasswordStep2RequestBody
 

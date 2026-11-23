@@ -76,7 +76,7 @@ func TestSQLProviderRevokeOAuth2SessionsByUsername(t *testing.T) {
 	assert.Equal(t, int64(0), n)
 }
 
-func TestSQLProviderRevokePendingIdentityVerificationsByUsername(t *testing.T) {
+func TestSQLProviderRevokeIdentityVerificationsByUsername(t *testing.T) {
 	provider := newTestSQLiteProvider(t)
 	require.NoError(t, provider.StartupCheck())
 
@@ -107,13 +107,17 @@ func TestSQLProviderRevokePendingIdentityVerificationsByUsername(t *testing.T) {
 		return ok
 	}
 
-	n, err := provider.RevokePendingIdentityVerificationsByUsername(ctx, "john", "account_setup")
+	n, err := provider.RevokeIdentityVerificationsByUsername(ctx, "john", "account_setup")
 	require.NoError(t, err)
-	assert.Equal(t, int64(1), n, "only the pending link of the action")
+	assert.Equal(t, int64(2), n, "the links of the action, the used one too")
+
+	used, err := provider.LoadIdentityVerification(ctx, consumed.String())
+	require.NoError(t, err)
+	assert.True(t, used.RevokedAt.Valid, "revoking a used link ends the process it started")
 	assert.False(t, found(invite))
 	assert.True(t, found(reset))
 
-	n, err = provider.RevokePendingIdentityVerificationsByUsername(ctx, "john", "")
+	n, err = provider.RevokeIdentityVerificationsByUsername(ctx, "john", "")
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), n)
 	assert.False(t, found(reset))

@@ -7,6 +7,11 @@
 ---
 server:
   address: 'tcp://127.0.0.1:9091/realms/test'
+  endpoints:
+    rate_limits:
+      # The tests redeem many links from one address.
+      reset_password_finish:
+        enable: false
 log:
   level: debug
   file_path: '${DIR}/authelia.log'

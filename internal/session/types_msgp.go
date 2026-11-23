@@ -56,6 +56,10 @@ type UserSession struct {
 	// with a redeemed invite link.
 	AccountSetupUsername *string `msg:"asu,omitempty"`
 
+	// AccountSetupID is the identifier of the invite link the session redeemed, which is checked again when the password
+	// is set so a revoked link ends the account setup.
+	AccountSetupID string `msg:"asi,omitempty"`
+
 	RefreshTTL time.Time `msg:"ttl"`
 
 	Elevations Elevations `msg:"e"`
