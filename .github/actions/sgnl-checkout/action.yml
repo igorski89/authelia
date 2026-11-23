@@ -24,5 +24,8 @@ runs:
         git fetch --no-tags https://github.com/authelia/authelia.git master
         echo "upstream master: $(git rev-parse FETCH_HEAD)"
         git merge --no-edit FETCH_HEAD || {
-        echo '::error::upstream master does not merge cleanly into sgnl'; git diff --name-only --diff-filter=U; exit 1; }
+        echo '::error::upstream master does not merge cleanly into sgnl'
+        git diff --name-only --diff-filter=U
+        exit 1
+        }
 ...
