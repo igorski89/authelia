@@ -142,7 +142,7 @@ from a local Keycloak 26.8.2 with a throwaway user, same password policy as prod
      - a full authorization code flow (first factor, consent, code, token) returns an ID token with
        `iss` = `https://<host>/realms/<realm>`.
    - Login portal: verified 2026-11-23 with the fork patch. The full image (real frontend) under
-     `/realms/mimi-insights` was driven by headless Chrome (Playwright) through authorize, login page, password,
+     `/realms/<realm>` was driven by headless Chrome (Playwright) through authorize, login page, password,
      consent page and redirect with code. No failed requests (assets, API). Other portal pages (reset password,
      settings) are not tested yet.
    - Caveat: the server also answers on `/` with issuer `https://<host>`, so the reverse proxy must route only the
