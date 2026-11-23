@@ -32,7 +32,7 @@ Decided by igor on 2026-11-23. They replace the earlier "thin seams" approach.
      check that they still apply).
    - Upstream's contiguity test (`internal/storage/migrations_test.go`) turns the nightly drift check red on a
      collision.
-3. **Kept in sync with upstream `master`** (assumed to continue): merges, weekly and on releases. Syncs will conflict
+3. **Kept in sync with upstream `master`**: merged by hand from time to time (igor, 2026-11-23). Syncs will conflict
    more often than with a thin fork; that cost is accepted. When upstream ships an equivalent feature, we compare the
    two and switch to theirs if we're ready to merge into it.
 4. **Existing per-user data stays keyed by username.** No re-keying of upstream tables or foreign keys onto them.
@@ -95,7 +95,8 @@ Planned work that isn't started yet.
 
 ## Sync log
 
-Merge upstream `master` into `sgnl` at least weekly and on every upstream release. Merge, don't rebase.
+Merge upstream `master` into `sgnl` by hand from time to time (igor, 2026-11-23). Merge, don't rebase. The nightly
+drift check only reports whether the next merge would pass; it never pushes.
 
 | Date | Upstream commit | Result | Notes |
 |---|---|---|---|
@@ -233,4 +234,4 @@ Not covered yet:
 - **Upstream's integration suites** (`internal/suites`, Buildkite) are not run by the fork's CI. The unit tests are.
   The token, userinfo, and introspection changes are what those suites would exercise.
 - **JWT access tokens** that an app validates itself stay valid after a disable until they expire. Keep their
-  lifespans short.
+  lifespans short (SGNL uses 5 minutes).
