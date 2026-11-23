@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"os/user"
+	"slices"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -827,6 +828,10 @@ func (ctx *CmdCtx) UsersImportKeycloakRunE(cmd *cobra.Command, args []string) (e
 		return err
 	}
 
+	if err = ctx.usersImportCheckRPID(opts.RPID); err != nil {
+		return err
+	}
+
 	file, err := os.Open(args[0])
 	if err != nil {
 		return fmt.Errorf("error opening the realm export: %w", err)
@@ -883,4 +888,33 @@ func writeKeycloakImportReport(w io.Writer, report *management.KeycloakImportRep
 			_, _ = fmt.Fprintf(w, "  %s\n", item)
 		}
 	}
+}
+
+// usersImportCheckRPID refuses an RP ID which this configuration doesn't use: the host of an authelia_url, or a
+// configured WebAuthn relying party. Imported passkeys only work for the RP ID they were registered for, and a wrong
+// one would only show as passkeys which are never found. A configuration without either can't be checked.
+func (ctx *CmdCtx) usersImportCheckRPID(rpid string) error {
+	if rpid == "" {
+		return nil
+	}
+
+	var known []string
+
+	for _, cookie := range ctx.config.Session.Cookies {
+		if cookie.AutheliaURL != nil {
+			known = append(known, strings.ToLower(cookie.AutheliaURL.Hostname()))
+		}
+	}
+
+	for id := range ctx.config.WebAuthn.RelyingParties {
+		known = append(known, strings.ToLower(id))
+	}
+
+	if len(known) != 0 && !slices.Contains(known, strings.ToLower(rpid)) {
+		sort.Strings(known)
+
+		return fmt.Errorf("the WebAuthn RP ID '%s' is not one this configuration uses (%s)", rpid, strings.Join(known, ", "))
+	}
+
+	return nil
 }

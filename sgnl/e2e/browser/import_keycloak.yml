@@ -4,6 +4,7 @@
 
 # Throwaway configuration for the Keycloak import test: Authelia at https://id.example.com:9095/realms/test, so the
 # WebAuthn RP ID is id.example.com. Every secret is a test value.
+---
 server:
   address: 'tcp://:9095/realms/test'
   tls:
@@ -32,3 +33,4 @@ storage:
 notifier:
   filesystem:
     filename: '/data/notif.txt'
+...

@@ -7,6 +7,7 @@ package management
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -121,6 +122,11 @@ func TestImportKeycloakUnsupported(t *testing.T) {
 		{"ShouldRefuseSubgroups", `{"groups":[{"name":"a","path":"/a","subGroups":[{"name":"b","path":"/a/b"}]}]}`, KeycloakImportOptions{}, "can't be imported, as groups are flat", 0},
 		{"ShouldRefuseNonUUIDUserID", `{"users":[{"id":"not-a-uuid","username":"a","email":"a@example.com","enabled":true}]}`, KeycloakImportOptions{}, "the user ID is not a UUID", 0},
 		{"ShouldRefuseFederatedUsers", `{"users":[{"id":"64cbf037-42cd-4a17-b555-8ee34dda4bc2","username":"a","federationLink":"ldap"}]}`, KeycloakImportOptions{}, "federated users", 0},
+		{"ShouldRefuseAnotherRPID", `{"webAuthnPolicyRpId":"id.example.com","users":[]}`, KeycloakImportOptions{RPID: "auth.example.com"}, "registered for the RP ID 'id.example.com'", 0},
+		{"ShouldRefuseUsersWithoutEmail", `{"users":[{"id":"64cbf037-42cd-4a17-b555-8ee34dda4bc2","username":"a","enabled":true}]}`, KeycloakImportOptions{}, "user 'a'", 0},
+		{"ShouldSkipUsersWithoutEmail", `{"users":[{"id":"64cbf037-42cd-4a17-b555-8ee34dda4bc2","username":"a","enabled":true}]}`, KeycloakImportOptions{SkipUnsupported: true}, "", 1},
+		{"ShouldRefuseInvalidUsernames", `{"users":[{"id":"64cbf037-42cd-4a17-b555-8ee34dda4bc2","username":"a b","email":"a@example.com","enabled":true}]}`, KeycloakImportOptions{}, "the username must", 0},
+		{"ShouldIgnorePasswordHistory", `{"users":[{"id":"64cbf037-42cd-4a17-b555-8ee34dda4bc2","username":"a","email":"a@example.com","enabled":true,"credentials":[{"type":"password-history"}]}]}`, KeycloakImportOptions{}, "", 0},
 		{"ShouldSkipServiceAccounts", `{"users":[{"id":"x","username":"service-account-app","serviceAccountClientId":"app"}]}`, KeycloakImportOptions{}, "", 1},
 		{"ShouldRefuseUnknownHashes", `{"users":[{"id":"64cbf037-42cd-4a17-b555-8ee34dda4bc2","username":"a","email":"a@example.com","enabled":true,"credentials":[{"type":"password","secretData":"{\"value\":\"aGFzaA==\",\"salt\":\"c2FsdA==\"}","credentialData":"{\"hashIterations\":1,\"algorithm\":\"md5\"}"}]}]}`, KeycloakImportOptions{}, "the algorithm 'md5' is not supported", 0},
 	}
@@ -139,6 +145,33 @@ func TestImportKeycloakUnsupported(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Len(t, report.Skipped, tc.skipped)
+		})
+	}
+}
+
+func TestKeycloakPBKDF2Digests(t *testing.T) {
+	// Computed with Python hashlib.pbkdf2_hmac for the password "password" and the salt below.
+	testCases := []struct {
+		algorithm, value string
+		iterations       int
+		expected         string
+	}{
+		{"pbkdf2-sha512", "K90gij2YBNIgoz/D9Y7pzyQJqQ2BUrwnEFqwnC2/GnuEIjIZaMTyQapaiwNEy7a17KAqaJm+3CtgURDwS29PJQ==", 30000, "pbkdf2-sha512"},
+		{"pbkdf2", "CAWZtnmnvFgKKs891UBlojfsrD0=", 20000, "pbkdf2-sha1"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.algorithm, func(t *testing.T) {
+			digest, algorithm, err := keycloakPasswordDigest(keycloakCredential{
+				SecretData:     `{"value":"` + tc.value + `","salt":"KQ/nrX3xiiuOAoRGGXhBLQ=="}`,
+				CredentialData: fmt.Sprintf(`{"hashIterations":%d,"algorithm":"%s","additionalParameters":{}}`, tc.iterations, tc.algorithm),
+			})
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, algorithm)
+
+			decoded, err := schema.DecodePasswordDigest(digest)
+			require.NoError(t, err)
+			assert.True(t, decoded.Match("password"), digest)
 		})
 	}
 }

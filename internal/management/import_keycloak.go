@@ -31,6 +31,7 @@ const (
 	keycloakCredentialPassword             = "password"
 	keycloakCredentialWebAuthn             = "webauthn"
 	keycloakCredentialWebAuthnPasswordless = "webauthn-passwordless" //nolint:gosec // This is a Keycloak credential type, not a credential.
+	keycloakCredentialPasswordHistory      = "password-history"
 
 	webauthnDescriptionMaxLength = 64
 )
@@ -69,6 +70,10 @@ type KeycloakImportReport struct {
 type keycloakExport struct {
 	Users  []keycloakUser  `json:"users"`
 	Groups []keycloakGroup `json:"groups"`
+
+	// The RP IDs of the realm's WebAuthn policies, empty when Keycloak used its hostname.
+	WebAuthnPolicyRPID             string `json:"webAuthnPolicyRpId"`
+	WebAuthnPolicyPasswordlessRPID string `json:"webAuthnPolicyPasswordlessRpId"`
 }
 
 type keycloakGroup struct {
@@ -145,6 +150,13 @@ func (s *Service) ImportKeycloak(ctx context.Context, r io.Reader, opts Keycloak
 	}
 
 	report = &KeycloakImportReport{Passwords: map[string]int{}, WebAuthn: map[string]int{}}
+
+	// A passkey only works for the RP ID it was registered for, so a realm which set one must be imported for it.
+	for _, rpid := range []string{export.WebAuthnPolicyRPID, export.WebAuthnPolicyPasswordlessRPID} {
+		if rpid != "" && opts.RPID != "" && !strings.EqualFold(rpid, opts.RPID) {
+			return nil, fmt.Errorf("%w: the realm's WebAuthn credentials were registered for the RP ID '%s', not '%s'", ErrInvalid, rpid, opts.RPID)
+		}
+	}
 
 	groups, err := keycloakGroups(export.Groups, opts, report)
 	if err != nil {
@@ -290,6 +302,15 @@ func keycloakImportUser(user *keycloakUser, groups []string, opts KeycloakImport
 		return nil, unsupported(opts, report, name+": the user ID is not a UUID, so it can't be the subject identifier")
 	}
 
+	// Checked here, rather than when the user is created, so a user Authelia can't hold is reported like the rest.
+	if err = validateUsername(model.CanonicalAuthenticationUsername(user.Username)); err != nil {
+		return nil, unsupported(opts, report, fmt.Sprintf("%s: %v", name, err))
+	}
+
+	if err = validateProfile(model.CanonicalAuthenticationUsername(user.Email), strings.TrimSpace(user.FirstName+" "+user.LastName), strings.TrimSpace(user.FirstName), strings.TrimSpace(user.LastName)); err != nil {
+		return nil, unsupported(opts, report, fmt.Sprintf("%s: %v", name, err))
+	}
+
 	out = &importUser{
 		subject: subject,
 		in: NewUser{
@@ -374,6 +395,9 @@ func keycloakImportCredentials(user *keycloakUser, out *importUser, opts Keycloa
 
 			out.webauthn = append(out.webauthn, *c)
 			report.WebAuthn[credential.Type]++
+		case keycloakCredentialPasswordHistory:
+			// Former passwords only serve Keycloak's password history policy; they can't log in.
+			report.Warnings = append(report.Warnings, name+": the password history is not imported")
 		default:
 			if err = unsupported(opts, report, fmt.Sprintf("%s: the credential type '%s' can't be imported", name, credential.Type)); err != nil {
 				return err

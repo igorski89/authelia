@@ -1,6 +1,8 @@
 {
   "realm": "test",
   "keycloakVersion": "26.8.2",
+  "webAuthnPolicyRpId": "",
+  "webAuthnPolicyPasswordlessRpId": "",
   "groups": [
     {
       "id": "8b27b08e-26bf-486e-9fb3-ef95c9515d2c",
