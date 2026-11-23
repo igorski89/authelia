@@ -27,6 +27,10 @@ const (
 // in their canonical form and the user is signed as it is saved. A username which is taken, or which belonged to a
 // deleted user, is refused.
 func (p *SQLProvider) CreateAuthenticationUser(ctx context.Context, user model.AuthenticationUser) (err error) {
+	if err = p.ensureAuthenticationUserKey(ctx); err != nil {
+		return err
+	}
+
 	user.Username = model.CanonicalAuthenticationUsername(user.Username)
 	user.Email = model.CanonicalAuthenticationUsername(user.Email)
 
@@ -67,18 +71,30 @@ func (p *SQLProvider) CreateAuthenticationUser(ctx context.Context, user model.A
 // LoadAuthenticationUser loads a user of the database authentication backend by username, with its groups. A user
 // whose signature is not valid is refused with [ErrAuthenticationUserSignatureInvalid].
 func (p *SQLProvider) LoadAuthenticationUser(ctx context.Context, username string) (user *model.AuthenticationUser, err error) {
+	if err = p.ensureAuthenticationUserKey(ctx); err != nil {
+		return nil, err
+	}
+
 	return p.loadAuthenticationUser(ctx, p.sqlSelectAuthenticationUserByUsername, model.CanonicalAuthenticationUsername(username))
 }
 
 // LoadAuthenticationUserByEmail loads a user of the database authentication backend by email, with its groups. A user
 // whose signature is not valid is refused with [ErrAuthenticationUserSignatureInvalid].
 func (p *SQLProvider) LoadAuthenticationUserByEmail(ctx context.Context, email string) (user *model.AuthenticationUser, err error) {
+	if err = p.ensureAuthenticationUserKey(ctx); err != nil {
+		return nil, err
+	}
+
 	return p.loadAuthenticationUser(ctx, p.sqlSelectAuthenticationUserByEmail, model.CanonicalAuthenticationUsername(email))
 }
 
 // LoadAuthenticationUsers loads a page of users of the database authentication backend ordered by username, with
 // their groups. A user whose signature is not valid is left out and logged.
 func (p *SQLProvider) LoadAuthenticationUsers(ctx context.Context, limit, page int) (users []model.AuthenticationUser, err error) {
+	if err = p.ensureAuthenticationUserKey(ctx); err != nil {
+		return nil, err
+	}
+
 	var rows []model.AuthenticationUser
 
 	if err = p.conn(ctx).SelectContext(ctx, &rows, p.sqlSelectAuthenticationUsers, limit, limit*page); err != nil {
@@ -106,6 +122,10 @@ func (p *SQLProvider) LoadAuthenticationUsers(ctx context.Context, limit, page i
 
 // UpdateAuthenticationUserProfile updates the email and names of a user of the database authentication backend.
 func (p *SQLProvider) UpdateAuthenticationUserProfile(ctx context.Context, username, email, displayName, givenName, familyName string) (err error) {
+	if err = p.ensureAuthenticationUserKey(ctx); err != nil {
+		return err
+	}
+
 	email = model.CanonicalAuthenticationUsername(email)
 
 	if email == "" {
@@ -128,6 +148,10 @@ func (p *SQLProvider) UpdateAuthenticationUserProfile(ctx context.Context, usern
 // UpdateAuthenticationUserPassword updates the password digest of a user of the database authentication backend. An
 // empty digest removes the password.
 func (p *SQLProvider) UpdateAuthenticationUserPassword(ctx context.Context, username, digest string) (err error) {
+	if err = p.ensureAuthenticationUserKey(ctx); err != nil {
+		return err
+	}
+
 	return p.updateAuthenticationUser(ctx, username, func(_ context.Context, user *model.AuthenticationUser) error {
 		user.Password = sql.NullString{String: digest, Valid: digest != ""}
 
@@ -137,6 +161,10 @@ func (p *SQLProvider) UpdateAuthenticationUserPassword(ctx context.Context, user
 
 // UpdateAuthenticationUserDisabled disables or enables a user of the database authentication backend.
 func (p *SQLProvider) UpdateAuthenticationUserDisabled(ctx context.Context, username string, disabled bool) (err error) {
+	if err = p.ensureAuthenticationUserKey(ctx); err != nil {
+		return err
+	}
+
 	return p.updateAuthenticationUser(ctx, username, func(_ context.Context, user *model.AuthenticationUser) error {
 		user.Disabled = disabled
 
@@ -206,6 +234,10 @@ func (p *SQLProvider) LoadAuthenticationGroups(ctx context.Context) (groups []mo
 // LoadAuthenticationGroupMembers loads the usernames of the members of a group of the database authentication backend
 // ordered by username. A membership whose signature is not valid is left out and logged.
 func (p *SQLProvider) LoadAuthenticationGroupMembers(ctx context.Context, name string) (usernames []string, err error) {
+	if err = p.ensureAuthenticationUserKey(ctx); err != nil {
+		return nil, err
+	}
+
 	var group *model.AuthenticationGroup
 
 	if group, err = p.loadAuthenticationGroup(ctx, name); err != nil {
@@ -246,6 +278,10 @@ func (p *SQLProvider) DeleteAuthenticationGroup(ctx context.Context, name string
 // AddAuthenticationUserGroup makes a user of the database authentication backend a member of a group. The membership
 // is signed as it is saved.
 func (p *SQLProvider) AddAuthenticationUserGroup(ctx context.Context, username, group string) (err error) {
+	if err = p.ensureAuthenticationUserKey(ctx); err != nil {
+		return err
+	}
+
 	return p.inTransaction(ctx, func(ctx context.Context) (err error) {
 		var (
 			user *model.AuthenticationUser
@@ -316,6 +352,8 @@ func (p *SQLProvider) loadAuthenticationUser(ctx context.Context, query, value s
 	}
 
 	if !p.verifyAuthenticationUserSignature(user) {
+		p.log.WithField("username", user.Username).Error("Authentication user has a signature which is not valid; it was not written by Authelia with the current key and is treated as if it does not exist")
+
 		return nil, fmt.Errorf("error loading authentication user '%s': %w", user.Username, ErrAuthenticationUserSignatureInvalid)
 	}
 
@@ -401,15 +439,15 @@ func (p *SQLProvider) updateAuthenticationUser(ctx context.Context, username str
 }
 
 // checkAuthenticationUserAvailable checks that a username (when not empty) is neither taken nor deleted, and that an
-// email is not used by a user other than the one with the given id.
+// email is not used by a user other than the one with the given id. As users may log in with their email, a username
+// must also not be the email of another user, and an email must not be the username of another user.
 func (p *SQLProvider) checkAuthenticationUserAvailable(ctx context.Context, username, email string, id int) (err error) {
-	var user model.AuthenticationUser
-
 	if username != "" {
-		switch err = p.conn(ctx).GetContext(ctx, &user, p.sqlSelectAuthenticationUserByUsername, username); {
-		case err == nil:
-			return ErrAuthenticationUsernameTaken
-		case !errors.Is(err, sql.ErrNoRows):
+		if err = p.checkAuthenticationUserUnused(ctx, p.sqlSelectAuthenticationUserByUsername, username, id, ErrAuthenticationUsernameTaken); err != nil {
+			return err
+		}
+
+		if err = p.checkAuthenticationUserUnused(ctx, p.sqlSelectAuthenticationUserByEmail, username, id, ErrAuthenticationUsernameTaken); err != nil {
 			return err
 		}
 
@@ -418,16 +456,29 @@ func (p *SQLProvider) checkAuthenticationUserAvailable(ctx context.Context, user
 		}
 	}
 
-	switch err = p.conn(ctx).GetContext(ctx, &user, p.sqlSelectAuthenticationUserByEmail, email); {
-	case err == nil:
-		if user.ID != id {
-			return ErrAuthenticationEmailTaken
-		}
-	case !errors.Is(err, sql.ErrNoRows):
+	if err = p.checkAuthenticationUserUnused(ctx, p.sqlSelectAuthenticationUserByEmail, email, id, ErrAuthenticationEmailTaken); err != nil {
 		return err
 	}
 
-	return nil
+	return p.checkAuthenticationUserUnused(ctx, p.sqlSelectAuthenticationUserByUsername, email, id, ErrAuthenticationEmailTaken)
+}
+
+// checkAuthenticationUserUnused returns errTaken when the query finds a user other than the one with the given id.
+func (p *SQLProvider) checkAuthenticationUserUnused(ctx context.Context, query, value string, id int, errTaken error) (err error) {
+	var user model.AuthenticationUser
+
+	switch err = p.conn(ctx).GetContext(ctx, &user, query, value); {
+	case err == nil:
+		if id == 0 || user.ID != id {
+			return errTaken
+		}
+
+		return nil
+	case errors.Is(err, sql.ErrNoRows):
+		return nil
+	default:
+		return err
+	}
 }
 
 func (p *SQLProvider) checkAuthenticationUsernameNotDeleted(ctx context.Context, username string) (err error) {
@@ -504,6 +555,40 @@ func signatureHMACSHA512(key []byte, values ...string) string {
 	}
 
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// LoadAuthenticationUserHMACKey loads the HMAC key of the database authentication backend into the storage provider,
+// generating and persisting it when it does not exist. The startup check loads it; other callers which begin a
+// transaction must load it first.
+func (p *SQLProvider) LoadAuthenticationUserHMACKey(ctx context.Context) (err error) {
+	return p.ensureAuthenticationUserKey(ctx)
+}
+
+// ensureAuthenticationUserKey loads the HMAC key when the provider has not loaded it yet, as the storage commands
+// don't run the startup check. Signing or verifying with an empty key would make every row look tampered.
+func (p *SQLProvider) ensureAuthenticationUserKey(ctx context.Context) (err error) {
+	if len(p.keys.authenticationUserHMAC) != 0 {
+		return nil
+	}
+
+	// Loading the key opens its own transaction, which would wait on the caller's transaction on SQLite.
+	if tx, ok := ctx.Value(ctxKeyTransaction).(SQLXTx); ok && tx != nil {
+		return fmt.Errorf("failed to initialize the hmac authentication user signature key: it must be loaded with LoadAuthenticationUserHMACKey before beginning a transaction")
+	}
+
+	var key []byte
+
+	if key, err = p.getHMACAuthenticationUser(ctx); err != nil {
+		return fmt.Errorf("failed to initialize the hmac authentication user signature key: %w", err)
+	}
+
+	if len(key) == 0 {
+		return fmt.Errorf("failed to initialize the hmac authentication user signature key: the key is empty")
+	}
+
+	p.keys.authenticationUserHMAC = key
+
+	return nil
 }
 
 func (p *SQLProvider) authenticationUserSignature(user *model.AuthenticationUser) string {

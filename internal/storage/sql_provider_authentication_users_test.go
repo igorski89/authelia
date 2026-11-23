@@ -7,11 +7,13 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/authelia/authelia/v4/internal/authentication"
 	"github.com/authelia/authelia/v4/internal/model"
 )
 
@@ -276,4 +278,72 @@ func TestAuthenticationUserSignatureCoversEveryField(t *testing.T) {
 	membership := model.AuthenticationUserGroup{Username: "john", Group: "admins"}
 	assert.NotEqual(t, authenticationUserGroupSignature(key, &membership), authenticationUserGroupSignature(key, &model.AuthenticationUserGroup{Username: "john", Group: "admin"}))
 	assert.NotEqual(t, authenticationUserGroupSignature(key, &membership), authenticationUserGroupSignature(key, &model.AuthenticationUserGroup{Username: "johnadmins"}))
+}
+
+func TestSQLProviderAuthenticationUsersWithoutStartupCheck(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "db.sqlite3")
+
+	ctx := context.Background()
+
+	migrated := newTestSQLiteProviderAtPath(t, path)
+	require.NoError(t, migrated.SchemaMigrate(ctx, true, SchemaLatest))
+	require.NoError(t, migrated.Close())
+
+	// The storage commands never run the startup check, so the key is loaded on demand.
+	cli := newTestSQLiteProviderAtPath(t, path)
+	require.Empty(t, cli.keys.authenticationUserHMAC)
+	require.NoError(t, cli.CreateAuthenticationUser(ctx, newTestAuthenticationUser("john", "john@example.com")))
+	require.NoError(t, cli.CreateAuthenticationGroup(ctx, "admins"))
+	require.NoError(t, cli.AddAuthenticationUserGroup(ctx, "john", "admins"))
+	require.NotEmpty(t, cli.keys.authenticationUserHMAC)
+	require.NoError(t, cli.Close())
+
+	server := newTestSQLiteProviderAtPath(t, path)
+	require.NoError(t, server.StartupCheck())
+
+	user, err := server.LoadAuthenticationUser(ctx, "john")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"admins"}, user.Groups)
+
+	// A provider which has not loaded the key refuses to load it inside a transaction.
+	fresh := newTestSQLiteProviderAtPath(t, path)
+
+	txctx, err := fresh.BeginTX(ctx)
+	require.NoError(t, err)
+
+	assert.ErrorContains(t, fresh.CreateAuthenticationUser(txctx, newTestAuthenticationUser("jane", "jane@example.com")), "must be loaded with LoadAuthenticationUserHMACKey")
+	require.NoError(t, fresh.Rollback(txctx))
+
+	require.NoError(t, fresh.LoadAuthenticationUserHMACKey(ctx))
+
+	txctx, err = fresh.BeginTX(ctx)
+	require.NoError(t, err)
+	require.NoError(t, fresh.CreateAuthenticationUser(txctx, newTestAuthenticationUser("jane", "jane@example.com")))
+	require.NoError(t, fresh.Commit(txctx))
+}
+
+func TestSQLProviderAuthenticationUsernameEmailCollisions(t *testing.T) {
+	provider := newTestSQLiteProvider(t)
+	require.NoError(t, provider.StartupCheck())
+
+	ctx := context.Background()
+
+	require.NoError(t, provider.CreateAuthenticationUser(ctx, newTestAuthenticationUser("john", "john@example.com")))
+	require.NoError(t, provider.CreateAuthenticationUser(ctx, newTestAuthenticationUser("jane@example.com", "jane@example.com")), "a username may equal the user's own email")
+
+	assert.ErrorIs(t, provider.CreateAuthenticationUser(ctx, newTestAuthenticationUser("john@example.com", "other@example.com")), ErrAuthenticationUsernameTaken, "a username must not be another user's email")
+	assert.ErrorIs(t, provider.CreateAuthenticationUser(ctx, newTestAuthenticationUser("bob", "jane@example.com")), ErrAuthenticationEmailTaken)
+	assert.ErrorIs(t, provider.UpdateAuthenticationUserProfile(ctx, "john", "jane@example.com", "", "", ""), ErrAuthenticationEmailTaken, "an email must not be another user's username")
+
+	require.NoError(t, provider.CreateAuthenticationUser(ctx, newTestAuthenticationUser("bob", "bob@example.com")))
+	assert.ErrorIs(t, provider.UpdateAuthenticationUserProfile(ctx, "bob", "john", "", "", ""), ErrAuthenticationEmailTaken)
+
+	_, err := provider.LoadAuthenticationUser(ctx, "nobody")
+	assert.ErrorIs(t, err, authentication.ErrUserNotFound)
+
+	_, err = provider.db.ExecContext(ctx, "UPDATE authentication_users SET disabled = TRUE WHERE username = 'bob';")
+	require.NoError(t, err)
+
+	_, err = provider.LoadAuthenticationUser(ctx, "bob")
+	assert.ErrorIs(t, err, authentication.ErrUserNotFound, "a tampered user is reported as not found")
 }

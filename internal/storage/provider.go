@@ -83,6 +83,10 @@ type Provider interface {
 		Implementation for the Database Authentication Backend.
 	*/
 
+	// LoadAuthenticationUserHMACKey loads the HMAC key which signs the users and memberships of the database
+	// authentication backend, generating it when it does not exist.
+	LoadAuthenticationUserHMACKey(ctx context.Context) (err error)
+
 	// CreateAuthenticationUser creates a user of the database authentication backend.
 	CreateAuthenticationUser(ctx context.Context, user model.AuthenticationUser) (err error)
 

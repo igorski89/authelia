@@ -22,7 +22,7 @@ Rotate the authentication user HMAC key
 
 Rotate the authentication user HMAC key.
 
-This subcommand allows rotation of the HMAC key used to sign the users and group memberships of the database authentication backend. In addition it signs every row in the 'authentication_users' and 'authentication_user_groups' tables again with the new key. If any row has a signature which is not valid for the current key nothing is changed, so the row can be investigated.
+This subcommand allows rotation of the HMAC key used to sign the users and group memberships of the database authentication backend. In addition it signs every row in the 'authentication_users' and 'authentication_user_groups' tables again with the new key. If any row has a signature which is not valid for the current key nothing is changed, so the row can be investigated. Stop Authelia first: a running instance keeps the previous key and treats every user as not found until it is restarted.
 
 ```
 authelia storage encryption rotate hmac authentication-user [flags]

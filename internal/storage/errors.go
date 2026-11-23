@@ -51,8 +51,8 @@ var (
 
 	// ErrAuthenticationUserSignatureInvalid is returned when a user of the database authentication backend has been
 	// found in the database but its signature is not valid, which indicates the row was not written by Authelia with
-	// the current key. Such a user must be treated as if it does not exist.
-	ErrAuthenticationUserSignatureInvalid = errors.New("the authentication user signature is not valid")
+	// the current key. Such a user must be treated as if it does not exist, so it wraps [authentication.ErrUserNotFound].
+	ErrAuthenticationUserSignatureInvalid = fmt.Errorf("the authentication user signature is not valid: %w", authentication.ErrUserNotFound)
 
 	// ErrAuthenticationUsernameTaken is returned when a username is already used by another user.
 	ErrAuthenticationUsernameTaken = errors.New("the username is already taken")

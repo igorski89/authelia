@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -166,16 +167,22 @@ func TestDatabaseUserProviderGetDetails(t *testing.T) {
 	assert.ErrorIs(t, err, ErrUserNotFound)
 }
 
-func TestDatabaseUserProviderStoreErrorIsNotFound(t *testing.T) {
+func TestDatabaseUserProviderStoreErrors(t *testing.T) {
 	provider, store := newTestDatabaseUserProvider(t, true)
 
-	store.err = errors.New("the authentication user signature is not valid")
+	store.err = fmt.Errorf("the authentication user signature is not valid: %w", ErrUserNotFound)
 
 	_, err := provider.GetDetails("john")
-	assert.ErrorIs(t, err, ErrUserNotFound)
+	assert.ErrorIs(t, err, ErrUserNotFound, "a tampered user is reported as not found")
+
+	store.err = errors.New("database is locked")
+
+	_, err = provider.GetDetails("john")
+	assert.EqualError(t, err, "error loading user 'john' from the database authentication backend: database is locked")
+	assert.NotErrorIs(t, err, ErrUserNotFound, "an unavailable database must not look like a deleted user")
 
 	_, err = provider.CheckUserPassword("john", "password")
-	assert.ErrorIs(t, err, ErrUserNotFound)
+	assert.NotErrorIs(t, err, ErrUserNotFound)
 }
 
 func TestDatabaseUserProviderPasswords(t *testing.T) {

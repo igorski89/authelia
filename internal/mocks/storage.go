@@ -539,6 +539,20 @@ func (mr *MockStorageMockRecorder) LoadAuthenticationUserByEmail(ctx, email any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadAuthenticationUserByEmail", reflect.TypeOf((*MockStorage)(nil).LoadAuthenticationUserByEmail), ctx, email)
 }
 
+// LoadAuthenticationUserHMACKey mocks base method.
+func (m *MockStorage) LoadAuthenticationUserHMACKey(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LoadAuthenticationUserHMACKey", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LoadAuthenticationUserHMACKey indicates an expected call of LoadAuthenticationUserHMACKey.
+func (mr *MockStorageMockRecorder) LoadAuthenticationUserHMACKey(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadAuthenticationUserHMACKey", reflect.TypeOf((*MockStorage)(nil).LoadAuthenticationUserHMACKey), ctx)
+}
+
 // LoadAuthenticationUsers mocks base method.
 func (m *MockStorage) LoadAuthenticationUsers(ctx context.Context, limit, page int) ([]model.AuthenticationUser, error) {
 	m.ctrl.T.Helper()

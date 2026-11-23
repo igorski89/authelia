@@ -14,7 +14,6 @@ import (
 	"github.com/go-crypt/crypt/algorithm"
 
 	"github.com/authelia/authelia/v4/internal/configuration/schema"
-	"github.com/authelia/authelia/v4/internal/logging"
 	"github.com/authelia/authelia/v4/internal/model"
 )
 
@@ -174,7 +173,8 @@ func (p *DatabaseUserProvider) setPassword(username, password string) (err error
 }
 
 // load returns an enabled user by username, or by email when email searching is enabled. A user which does not exist,
-// is disabled, or whose row has a signature which is not valid is reported as ErrUserNotFound.
+// is disabled, or whose row has a signature which is not valid is reported as ErrUserNotFound. Any other error, such as
+// the database being unavailable, is returned as it is, so it isn't mistaken for a deleted user.
 func (p *DatabaseUserProvider) load(username string) (user *model.AuthenticationUser, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), databaseUserProviderTimeout)
 	defer cancel()
@@ -193,9 +193,7 @@ func (p *DatabaseUserProvider) load(username string) (user *model.Authentication
 	case errors.Is(err, ErrUserNotFound):
 		return nil, ErrUserNotFound
 	default:
-		logging.Logger().WithError(err).WithField("username", username).Error("Error loading user from the database authentication backend")
-
-		return nil, ErrUserNotFound
+		return nil, fmt.Errorf("error loading user '%s' from the database authentication backend: %w", username, err)
 	}
 }
 
