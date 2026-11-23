@@ -368,7 +368,7 @@ func TestValidateSeverAddress(t *testing.T) {
 	require.Len(t, validator.Errors(), 1)
 	assert.Len(t, validator.Warnings(), 0)
 
-	assert.EqualError(t, validator.Errors()[0], "server: option 'address' must be a single subpath (i.e. '/path'), but '/path/' contains multiple segments")
+	assert.EqualError(t, validator.Errors()[0], "server: option 'address' must not have empty path segments or a trailing slash but it's configured as '/path/'")
 }
 
 func TestValidateServerShouldCorrectlyIdentifyValidAddressSchemes(t *testing.T) {
@@ -460,7 +460,7 @@ func TestShouldRaiseOnNonAlphanumericCharsInPath(t *testing.T) {
 	config := &schema.Configuration{
 		Server: schema.Server{
 			Address: &schema.AddressTCP{
-				Address: MustParseAddress("tcp://:9091/app-le"),
+				Address: MustParseAddress("tcp://:9091/app.le"),
 			},
 		},
 	}
@@ -469,7 +469,7 @@ func TestShouldRaiseOnNonAlphanumericCharsInPath(t *testing.T) {
 
 	require.Len(t, validator.Errors(), 1)
 
-	assert.EqualError(t, validator.Errors()[0], "server: option 'address' must have a path with only alphanumeric characters but it's configured as '/app-le'")
+	assert.EqualError(t, validator.Errors()[0], "server: option 'address' must have a path with only alphanumeric characters, '-' and '_' in each segment but it's configured as '/app.le'")
 }
 
 func TestShouldRaiseOnForwardSlashInPath(t *testing.T) {
@@ -477,7 +477,7 @@ func TestShouldRaiseOnForwardSlashInPath(t *testing.T) {
 	config := &schema.Configuration{
 		Server: schema.Server{
 			Address: &schema.AddressTCP{
-				Address: MustParseAddress("tcp://:9091/app/le"),
+				Address: MustParseAddress("tcp://:9091/app//le"), // SGNL fork: multi-segment paths are allowed; empty segments are not.
 			},
 		},
 	}

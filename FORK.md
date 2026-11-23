@@ -38,9 +38,10 @@ Every upstream file the fork changes, with the reason. Each sync checks this lis
 
 | File | Change | Since |
 |---|---|---|
-| _(none yet)_ | | |
+| `internal/configuration/validator/server.go` | The server path check calls `sgnlValidateServerPath` (one line), so the path may have several segments with `-`/`_`, e.g. `/realms/<realm>`, to keep Keycloak's issuer. The rule itself is in the fork-only `sgnl_server_path.go` | 2026-11-23 |
+| `internal/configuration/validator/server_test.go` | 3 tests that asserted upstream's single-segment rule: messages updated, `/app-le` → `/app.le`, `/app/le` → `/app//le` | 2026-11-23 |
 
-Fork-only files (no upstream counterpart): `FORK.md`, `sgnl/`, `.github/workflows/sgnl-*.yml`,
+Fork-only files (no upstream counterpart): `FORK.md`, `sgnl/`, `internal/**/sgnl_*.go`, `.github/workflows/sgnl-*.yml`,
 `.github/actions/sgnl-checkout/`.
 
 ## Build
@@ -100,12 +101,14 @@ from a local Keycloak 26.8.2 with a throwaway user, same password policy as prod
      - discovery reports `issuer` = `https://<host>/realms/<realm>`, and all endpoints are under it;
      - a full authorization code flow (first factor, consent, code, token) returns an ID token with
        `iss` = `https://<host>/realms/<realm>`.
-   - Proven for the OIDC API flow only: the scratch build had an empty frontend stub. The login portal (web UI and its
-     asset paths) under a two-segment prefix is **unverified**; browser test in M1.
+   - Login portal: verified 2026-11-23 with the fork patch. The full image (real frontend) under
+     `/realms/mimi-insights` was driven by headless Chrome (Playwright) through authorize, login page, password,
+     consent page and redirect with code. No failed requests (assets, API). Other portal pages (reset password,
+     settings) are not tested yet.
    - Caveat: the server also answers on `/` with issuer `https://<host>`, so the reverse proxy must route only the
      prefix (or redirect `/` to it).
-   - Consequence: keeping the Keycloak issuer needs a fork change to one upstream file (the validator). It is a candidate
-     for M1, listed under "Touched upstream files" once made. Upstream may accept it (multi-segment base paths).
+   - Consequence: keeping the Keycloak issuer needs a fork change to one upstream file (the validator). igor approved
+     it on 2026-11-23, and it is done (see "Touched upstream files"). Upstream may accept it (multi-segment base paths).
 2. **Keycloak password hashes: usable as-is.**
    - Keycloak 26.8.2 stores argon2id, v=19, m=7168, t=5, p=1, 32-byte hash, with salt and hash as standard base64 in
      `secret_data`.

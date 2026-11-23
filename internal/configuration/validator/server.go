@@ -113,14 +113,7 @@ func ValidateServerAddress(config *schema.Configuration, validator *schema.Struc
 	case subpath == "":
 		config.Server.Address.SetPath("/")
 	case subpath != "/":
-		if p := strings.TrimPrefix(subpath, "/"); strings.Contains(p, "/") {
-			parts := strings.SplitN(subpath, "/", 3)
-			example := "/" + parts[1]
-
-			validator.Push(fmt.Errorf(errFmtServerPathNotEndForwardSlash, example, subpath))
-		} else if !utils.IsStringAlphaNumeric(p) {
-			validator.Push(fmt.Errorf(errFmtServerPathAlphaNumeric, subpath))
-		}
+		sgnlValidateServerPath(subpath, validator) // SGNL fork: multi-segment paths, see sgnl_server_path.go.
 	}
 
 	if config.Server.Address.IsUnixDomainSocket() || config.Server.Address.IsFileDescriptor() {
