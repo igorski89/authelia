@@ -6,10 +6,13 @@ package storage
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/mattn/go-sqlite3"
+
+	"github.com/authelia/authelia/v4/internal/authentication"
 )
 
 var (
@@ -39,8 +42,9 @@ var (
 	// but its signature is not valid, which indicates the link was not written by Authelia with the current key.
 	ErrExternalIdentityLinkSignatureInvalid = errors.New("the external identity link signature is not valid")
 
-	// ErrNoAuthenticationUser is returned when a user of the database authentication backend does not exist.
-	ErrNoAuthenticationUser = errors.New("no authentication user found")
+	// ErrNoAuthenticationUser is returned when a user of the database authentication backend does not exist. It wraps
+	// [authentication.ErrUserNotFound] so the authentication provider recognizes it without importing this package.
+	ErrNoAuthenticationUser = fmt.Errorf("no authentication user found: %w", authentication.ErrUserNotFound)
 
 	// ErrNoAuthenticationGroup is returned when a group of the database authentication backend does not exist.
 	ErrNoAuthenticationGroup = errors.New("no authentication group found")

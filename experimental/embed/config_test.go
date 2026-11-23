@@ -52,7 +52,7 @@ func TestNewConfiguration(t *testing.T) {
 			warnings: nil,
 			errors: []string{
 				"identity_validation: reset_password: option 'jwt_secret' is required when the reset password functionality isn't disabled",
-				"authentication_backend: you must ensure either the 'file' or 'ldap' authentication backend is configured",
+				"authentication_backend: you must ensure either the 'file', 'ldap', or 'database' authentication backend is configured",
 				"access_control: 'default_policy' option 'deny' is invalid: when no rules are specified it must be 'two_factor' or 'one_factor'",
 				"session: option 'secret' is required",
 				"session: option 'cookies' is required",

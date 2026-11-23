@@ -66,7 +66,7 @@ func NewProviders(config *schema.Configuration, caCertPool *x509.CertPool) (prov
 	providers.Regulator = regulation.NewRegulator(config.Regulation, providers.StorageProvider, providers.Clock)
 	providers.TOTP = totp.NewTimeBasedProvider(config.TOTP)
 	providers.UserAttributeResolver = expression.NewUserAttributes(config)
-	providers.UserProvider = NewAuthenticationProvider(config, caCertPool)
+	providers.UserProvider = NewAuthenticationProvider(config, caCertPool, providers.StorageProvider)
 	providers.Duo = duo.New(config)
 
 	switch {
@@ -115,11 +115,18 @@ func NewProvidersBasic() Providers {
 	}
 }
 
-// NewAuthenticationProvider returns a new authentication.UserProvider.
-func NewAuthenticationProvider(config *schema.Configuration, caCertPool *x509.CertPool) (provider authentication.UserProvider) {
+// NewAuthenticationProvider returns a new authentication.UserProvider. The database backend needs the storage
+// provider; without one it's reported as not configured.
+func NewAuthenticationProvider(config *schema.Configuration, caCertPool *x509.CertPool, store storage.Provider) (provider authentication.UserProvider) {
 	switch {
 	case config.AuthenticationBackend.File != nil:
 		return authentication.NewFileUserProvider(config.AuthenticationBackend.File)
+	case config.AuthenticationBackend.Database != nil:
+		if store == nil {
+			return nil
+		}
+
+		return authentication.NewDatabaseUserProvider(config.AuthenticationBackend.Database, store)
 	case config.AuthenticationBackend.LDAP != nil:
 		provider = authentication.NewLDAPUserProvider(config.AuthenticationBackend, caCertPool)
 	default:

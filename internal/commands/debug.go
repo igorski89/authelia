@@ -231,7 +231,7 @@ func (ctx *CmdCtx) DebugOIDCClaimsRunE(cmd *cobra.Command, args []string) (err e
 
 //nolint:gocyclo
 func runDebugOIDCClaims(ctx context.Context, w io.Writer, flags *pflag.FlagSet, config *schema.Configuration, caCertPool *x509.CertPool, username string) (err error) {
-	provider := middlewares.NewAuthenticationProvider(config, caCertPool)
+	provider := middlewares.NewAuthenticationProvider(config, caCertPool, nil)
 
 	if provider == nil {
 		return fmt.Errorf("error occurred initializing user authentication provider: a provider is not configured")
@@ -338,7 +338,7 @@ func (ctx *CmdCtx) DebugExpressionRunE(cmd *cobra.Command, args []string) (err e
 }
 
 func runDebugExpression(w io.Writer, config *schema.Configuration, caCertPool *x509.CertPool, username, exp string) (err error) {
-	provider := middlewares.NewAuthenticationProvider(config, caCertPool)
+	provider := middlewares.NewAuthenticationProvider(config, caCertPool, nil)
 
 	if provider == nil {
 		return fmt.Errorf("error occurred initializing user authentication provider: a provider is not configured")

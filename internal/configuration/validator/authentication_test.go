@@ -32,7 +32,7 @@ func TestShouldRaiseErrorWhenBothBackendsProvided(t *testing.T) {
 	ValidateAuthenticationBackend(&backendConfig, validator)
 
 	require.Len(t, validator.Errors(), 6)
-	assert.EqualError(t, validator.Errors()[0], "authentication_backend: please ensure only one of the 'file' or 'ldap' backend is configured")
+	assert.EqualError(t, validator.Errors()[0], "authentication_backend: please ensure only one of the 'file', 'ldap', or 'database' backend is configured")
 	assert.EqualError(t, validator.Errors()[1], "authentication_backend: ldap: option 'address' is required")
 	assert.EqualError(t, validator.Errors()[2], "authentication_backend: ldap: option 'user' is required")
 	assert.EqualError(t, validator.Errors()[3], "authentication_backend: ldap: option 'password' is required")
@@ -47,7 +47,7 @@ func TestShouldRaiseErrorWhenNoBackendProvided(t *testing.T) {
 	ValidateAuthenticationBackend(&backendConfig, validator)
 
 	require.Len(t, validator.Errors(), 1)
-	assert.EqualError(t, validator.Errors()[0], "authentication_backend: you must ensure either the 'file' or 'ldap' authentication backend is configured")
+	assert.EqualError(t, validator.Errors()[0], "authentication_backend: you must ensure either the 'file', 'ldap', or 'database' authentication backend is configured")
 }
 
 type FileBasedAuthenticationBackend struct {
@@ -1547,4 +1547,57 @@ func (suite *LDAPImplementationSuite) NotEqualImplementationDefaults(expected sc
 	if expected.Attributes.MemberOf != "" {
 		suite.NotEqual(expected.Attributes.MemberOf, suite.config.LDAP.Attributes.MemberOf)
 	}
+}
+
+func TestValidateAuthenticationBackendDatabase(t *testing.T) {
+	t.Run("ShouldSetDefaults", func(t *testing.T) {
+		validator := schema.NewStructValidator()
+		config := schema.AuthenticationBackend{Database: &schema.AuthenticationBackendDatabase{}}
+
+		ValidateAuthenticationBackend(&config, validator)
+
+		assert.Len(t, validator.Errors(), 0)
+		assert.Len(t, validator.Warnings(), 0)
+		assert.Equal(t, schema.DefaultPasswordConfig.Algorithm, config.Database.Password.Algorithm)
+		assert.Equal(t, schema.DefaultPasswordConfig.Argon2, config.Database.Password.Argon2)
+		assert.Equal(t, schema.NewRefreshIntervalDurationAlways(), config.RefreshInterval)
+	})
+
+	t.Run("ShouldKeepConfiguredRefreshInterval", func(t *testing.T) {
+		validator := schema.NewStructValidator()
+		config := schema.AuthenticationBackend{
+			Database:        &schema.AuthenticationBackendDatabase{},
+			RefreshInterval: schema.NewRefreshIntervalDuration(time.Minute),
+		}
+
+		ValidateAuthenticationBackend(&config, validator)
+
+		assert.Len(t, validator.Errors(), 0)
+		assert.Equal(t, schema.NewRefreshIntervalDuration(time.Minute), config.RefreshInterval)
+	})
+
+	t.Run("ShouldRaiseErrorOnInvalidPasswordAlgorithm", func(t *testing.T) {
+		validator := schema.NewStructValidator()
+		config := schema.AuthenticationBackend{Database: &schema.AuthenticationBackendDatabase{
+			Password: schema.AuthenticationBackendFilePassword{Algorithm: "md5"},
+		}}
+
+		ValidateAuthenticationBackend(&config, validator)
+
+		require.Len(t, validator.Errors(), 1)
+		assert.Contains(t, validator.Errors()[0].Error(), "'md5'")
+	})
+
+	t.Run("ShouldRaiseErrorWithAnotherBackend", func(t *testing.T) {
+		validator := schema.NewStructValidator()
+		config := schema.AuthenticationBackend{
+			Database: &schema.AuthenticationBackendDatabase{},
+			File:     &schema.AuthenticationBackendFile{Path: "/tmp/users.yml"},
+		}
+
+		ValidateAuthenticationBackend(&config, validator)
+
+		require.Len(t, validator.Errors(), 1)
+		assert.EqualError(t, validator.Errors()[0], "authentication_backend: please ensure only one of the 'file', 'ldap', or 'database' backend is configured")
+	})
 }

@@ -22,6 +22,9 @@ type AuthenticationBackend struct {
 	File *AuthenticationBackendFile `koanf:"file" yaml:"file,omitempty" toml:"file,omitempty" json:"file,omitempty" jsonschema:"title=File Backend" jsonschema_description:"The file authentication backend configuration."`
 	LDAP *AuthenticationBackendLDAP `koanf:"ldap" yaml:"ldap,omitempty" toml:"ldap,omitempty" json:"ldap,omitempty" jsonschema:"title=LDAP Backend" jsonschema_description:"The LDAP authentication backend configuration."`
 
+	// The database authentication backend configuration.
+	Database *AuthenticationBackendDatabase `koanf:"database" yaml:"database,omitempty" toml:"database,omitempty" json:"database,omitempty" jsonschema:"title=Database Backend" jsonschema_description:"The database authentication backend configuration. Users and groups are kept in the storage database and managed with the administration API or the CLI."`
+
 	ExternalIdentity *AuthenticationBackendExternalIdentity `koanf:"external_identity" yaml:"external_identity,omitempty" toml:"external_identity,omitempty" json:"external_identity,omitempty" jsonschema:"title=External Identity" jsonschema_description:"The external identity configuration."`
 }
 
@@ -51,6 +54,20 @@ type AuthenticationBackendFile struct {
 	Search AuthenticationBackendFileSearch `koanf:"search" yaml:"search,omitempty" toml:"search,omitempty" json:"search,omitempty" jsonschema:"title=Search" jsonschema_description:"Configures the user searching behavior."`
 
 	ExtraAttributes map[string]AuthenticationBackendExtraAttribute `koanf:"extra_attributes" yaml:"extra_attributes,omitempty" toml:"extra_attributes,omitempty" json:"extra_attributes,omitempty" jsonschema:"title=Extra Attributes" jsonschema_description:"Configures the extra attributes available in expressions and other areas of Authelia."`
+}
+
+// AuthenticationBackendDatabase represents the configuration related to the database backend, which keeps users and
+// groups in the storage database.
+type AuthenticationBackendDatabase struct {
+	Password AuthenticationBackendFilePassword `koanf:"password" yaml:"password,omitempty" toml:"password,omitempty" json:"password,omitempty" jsonschema:"title=Password Options" jsonschema_description:"Allows configuration of the password hashing options when the user passwords are set by Authelia."`
+
+	Search AuthenticationBackendDatabaseSearch `koanf:"search" yaml:"search,omitempty" toml:"search,omitempty" json:"search,omitempty" jsonschema:"title=Search" jsonschema_description:"Configures the user searching behavior."`
+}
+
+// AuthenticationBackendDatabaseSearch represents the configuration related to database backend searching. Usernames
+// and emails are always matched regardless of case.
+type AuthenticationBackendDatabaseSearch struct {
+	Email bool `koanf:"email" yaml:"email" toml:"email" json:"email" jsonschema:"default=false,title=Email Searching" jsonschema_description:"Allows users to either use their username or their email as a username."`
 }
 
 // AuthenticationBackendExtraAttribute represents the configuration of an extra user attribute.

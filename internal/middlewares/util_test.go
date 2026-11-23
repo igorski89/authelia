@@ -62,7 +62,7 @@ func TestNewAuthenticationProvider(t *testing.T) {
 	for i := range testCases {
 		t.Run(testCases[i].name, func(t *testing.T) {
 			tc := testCases[i]
-			provider := NewAuthenticationProvider(&tc.config, nil)
+			provider := NewAuthenticationProvider(&tc.config, nil, nil)
 			require.Nil(t, provider)
 		})
 	}
@@ -84,7 +84,7 @@ func TestNewAuthenticationProviderFile(t *testing.T) {
 		},
 	}
 
-	provider := NewAuthenticationProvider(&config, nil)
+	provider := NewAuthenticationProvider(&config, nil, nil)
 
 	assert.NotNil(t, provider)
 }
@@ -98,7 +98,7 @@ func TestNewAuthenticationProviderLDAP(t *testing.T) {
 		},
 	}
 
-	provider := NewAuthenticationProvider(&config, nil)
+	provider := NewAuthenticationProvider(&config, nil, nil)
 
 	assert.NotNil(t, provider)
 }

@@ -24,12 +24,14 @@ import (
 
 // ValidateAuthenticationBackend validates and updates the authentication backend configuration.
 func ValidateAuthenticationBackend(config *schema.AuthenticationBackend, validator *schema.StructValidator) {
-	if config.LDAP == nil && config.File == nil {
+	if config.LDAP == nil && config.File == nil && config.Database == nil {
 		validator.Push(errors.New(errFmtAuthBackendNotConfigured))
 	}
 
 	if !config.RefreshInterval.Valid() {
-		if config.File != nil && config.File.Watch {
+		// The database backend is always current and cheap to query, so a disabled, deleted, or changed user takes
+		// effect on the next request rather than after the refresh interval.
+		if (config.File != nil && config.File.Watch) || config.Database != nil {
 			config.RefreshInterval = schema.NewRefreshIntervalDurationAlways()
 		} else {
 			config.RefreshInterval = schema.NewRefreshIntervalDuration(schema.RefreshIntervalDefault)
@@ -54,7 +56,7 @@ func ValidateAuthenticationBackend(config *schema.AuthenticationBackend, validat
 		}
 	}
 
-	if config.LDAP != nil && config.File != nil {
+	if countAuthenticationBackends(config) > 1 {
 		validator.Push(errors.New(errFmtAuthBackendMultipleConfigured))
 	}
 
@@ -66,9 +68,23 @@ func ValidateAuthenticationBackend(config *schema.AuthenticationBackend, validat
 		validateLDAPAuthenticationBackend(config, validator)
 	}
 
+	if config.Database != nil {
+		ValidatePasswordConfiguration(&config.Database.Password, validator)
+	}
+
 	if config.ExternalIdentity != nil {
 		ValidateAuthenticationBackendExternalIdentity(config.ExternalIdentity, validator)
 	}
+}
+
+func countAuthenticationBackends(config *schema.AuthenticationBackend) (count int) {
+	for _, configured := range []bool{config.File != nil, config.LDAP != nil, config.Database != nil} {
+		if configured {
+			count++
+		}
+	}
+
+	return count
 }
 
 func validateFileAuthenticationBackend(config *schema.AuthenticationBackendFile, validator *schema.StructValidator) {

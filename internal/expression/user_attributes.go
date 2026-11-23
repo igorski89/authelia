@@ -50,6 +50,8 @@ func (e *UserAttributesExpressions) StartupCheck() (err error) {
 		err = e.ldapStartupCheck()
 	case e.config.AuthenticationBackend.File != nil:
 		err = e.fileStartupCheck()
+	case e.config.AuthenticationBackend.Database != nil:
+		err = e.setup(getStandardCELEnvOpts()...)
 	default:
 		err = fmt.Errorf("error reading config: no authentication backend configured")
 	}
