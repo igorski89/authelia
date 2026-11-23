@@ -58,6 +58,13 @@ tags:
     externalDocs:
       url: https://www.authelia.com/configuration/second-factor/introduction/
   {{- end }}
+  {{- if .Admin }}
+  - name: Administration
+    description: >
+      Administration API for managing the users and groups of the database authentication backend. Every request must
+      carry an OAuth 2.0 Access Token issued with the client credentials grant, granted the audience of the issuer
+      followed by /api/admin, and the authelia.admin.read scope (reads) or the authelia.admin.write scope (changes).
+  {{- end }}
   {{- if .OpenIDConnect }}
   - name: OAuth 2.0
     description: OAuth 2.0 Endpoints
@@ -3164,8 +3171,386 @@ paths:
       security:
         - authelia_auth: []
   {{- end }}
+  {{- if .Admin }}
+  /api/admin/whoami:
+    get:
+      operationId: getAdminWhoAmI
+      summary: Administration API Client
+      description: Returns the client calling the administration API, so it can check its credentials before it changes anything.
+      tags:
+        - Administration
+      responses:
+        "200":
+          description: Successful Operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  client_id:
+                    type: string
+                    example: agent
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+      security:
+        - admin_bearer: []
+  {{- if .AdminUsers }}
+  /api/admin/users:
+    get:
+      operationId: getAdminUsers
+      summary: List Users
+      tags:
+        - Administration
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Successful Operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/admin.User'
+                  limit:
+                    type: integer
+                  page:
+                    type: integer
+        "400":
+          $ref: '#/components/responses/adminBadRequest'
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+      security:
+        - admin_bearer: []
+    post:
+      operationId: postAdminUsers
+      summary: Create User
+      description: >
+        Creates a user, adding it to the given groups, which must exist. The username and email are stored in lowercase.
+        A username which belonged to a deleted user can never be used again.
+      tags:
+        - Administration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/admin.NewUser'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/admin.User'
+        "400":
+          $ref: '#/components/responses/adminBadRequest'
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+        "404":
+          $ref: '#/components/responses/adminNotFound'
+        "409":
+          $ref: '#/components/responses/adminConflict'
+      security:
+        - admin_bearer: []
+  /api/admin/users/{username}:
+    parameters:
+      - $ref: '#/components/parameters/adminUsername'
+    get:
+      operationId: getAdminUser
+      summary: Get User
+      tags:
+        - Administration
+      responses:
+        "200":
+          description: Successful Operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/admin.User'
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+        "404":
+          $ref: '#/components/responses/adminNotFound'
+      security:
+        - admin_bearer: []
+    patch:
+      operationId: patchAdminUser
+      summary: Update User
+      description: Changes the given fields of a user. Disabling a user refuses its logins, sessions, and tokens at once.
+      tags:
+        - Administration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/admin.UserChanges'
+      responses:
+        "200":
+          description: Successful Operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/admin.User'
+        "400":
+          $ref: '#/components/responses/adminBadRequest'
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+        "404":
+          $ref: '#/components/responses/adminNotFound'
+        "409":
+          $ref: '#/components/responses/adminConflict'
+      security:
+        - admin_bearer: []
+    delete:
+      operationId: deleteAdminUser
+      summary: Delete User
+      description: >
+        Deletes a user with its passkeys and other WebAuthn credentials, TOTP configuration, recovery codes, preferred
+        Duo device, and external identity links. The username can never be used again.
+      tags:
+        - Administration
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+        "404":
+          $ref: '#/components/responses/adminNotFound'
+      security:
+        - admin_bearer: []
+  /api/admin/users/{username}/password:
+    parameters:
+      - $ref: '#/components/parameters/adminUsername'
+    put:
+      operationId: putAdminUserPassword
+      summary: Set User Password
+      description: >
+        Sets the password of a user from either a plain password, which must meet the password policy, or a password
+        digest in the PHC string format.
+      tags:
+        - Administration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/admin.Password'
+      responses:
+        "204":
+          description: Updated
+        "400":
+          $ref: '#/components/responses/adminBadRequest'
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+        "404":
+          $ref: '#/components/responses/adminNotFound'
+      security:
+        - admin_bearer: []
+    delete:
+      operationId: deleteAdminUserPassword
+      summary: Remove User Password
+      tags:
+        - Administration
+      responses:
+        "204":
+          description: Removed
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+        "404":
+          $ref: '#/components/responses/adminNotFound'
+      security:
+        - admin_bearer: []
+  /api/admin/users/{username}/groups/{group}:
+    parameters:
+      - $ref: '#/components/parameters/adminUsername'
+      - $ref: '#/components/parameters/adminGroup'
+    put:
+      operationId: putAdminUserGroup
+      summary: Add User to Group
+      tags:
+        - Administration
+      responses:
+        "204":
+          description: Added
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+        "404":
+          $ref: '#/components/responses/adminNotFound'
+        "409":
+          $ref: '#/components/responses/adminConflict'
+      security:
+        - admin_bearer: []
+    delete:
+      operationId: deleteAdminUserGroup
+      summary: Remove User from Group
+      tags:
+        - Administration
+      responses:
+        "204":
+          description: Removed
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+        "404":
+          $ref: '#/components/responses/adminNotFound'
+      security:
+        - admin_bearer: []
+  /api/admin/groups:
+    get:
+      operationId: getAdminGroups
+      summary: List Groups
+      tags:
+        - Administration
+      responses:
+        "200":
+          description: Successful Operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/admin.Group'
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+      security:
+        - admin_bearer: []
+    post:
+      operationId: postAdminGroups
+      summary: Create Group
+      tags:
+        - Administration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: admins
+      responses:
+        "201":
+          description: Created
+        "400":
+          $ref: '#/components/responses/adminBadRequest'
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+        "409":
+          $ref: '#/components/responses/adminConflict'
+      security:
+        - admin_bearer: []
+  /api/admin/groups/{group}:
+    parameters:
+      - $ref: '#/components/parameters/adminGroup'
+    delete:
+      operationId: deleteAdminGroup
+      summary: Delete Group
+      description: Deletes a group and its memberships.
+      tags:
+        - Administration
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+        "404":
+          $ref: '#/components/responses/adminNotFound'
+      security:
+        - admin_bearer: []
+  /api/admin/groups/{group}/members:
+    parameters:
+      - $ref: '#/components/parameters/adminGroup'
+    get:
+      operationId: getAdminGroupMembers
+      summary: List Group Members
+      tags:
+        - Administration
+      responses:
+        "200":
+          description: Successful Operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items:
+                      type: string
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+        "404":
+          $ref: '#/components/responses/adminNotFound'
+      security:
+        - admin_bearer: []
+  {{- end }}
+  {{- end }}
 components:
   parameters:
+    adminUsername:
+      in: path
+      name: username
+      schema:
+        type: string
+      required: true
+      description: The username, matched regardless of case.
+    adminGroup:
+      in: path
+      name: group
+      schema:
+        type: string
+      required: true
+      description: The group name.
     credentialID:
       in: path
       name: credentialID
@@ -3337,7 +3722,148 @@ components:
         type: string
         examples:
           - 'XGQWWFMM'
+  responses:
+    adminBadRequest:
+      description: The request is not valid (error invalid_request).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/admin.Error'
+    adminNotFound:
+      description: The user or group does not exist (error not_found).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/admin.Error'
+    adminConflict:
+      description: The username, email, group, or membership already exists, or the username belonged to a deleted user (error conflict).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/admin.Error'
+    adminUnauthorized:
+      description: >
+        The request carries no Access Token, or one which is expired, revoked, issued by another issuer, or not issued
+        for the audience of the administration API (error invalid_token).
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+    adminForbidden:
+      description: >
+        The Access Token was not issued with the client credentials grant, or not granted the scope the operation
+        requires (error insufficient_scope).
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
   schemas:
+    admin.Error:
+      type: object
+      properties:
+        error:
+          type: string
+          enum: [invalid_request, not_found, conflict, server_error, invalid_token, insufficient_scope]
+        error_description:
+          type: string
+    admin.User:
+      type: object
+      properties:
+        username:
+          type: string
+          example: john
+        email:
+          type: string
+          example: john@example.com
+        display_name:
+          type: string
+          example: John Smith
+        given_name:
+          type: string
+          example: John
+        family_name:
+          type: string
+          example: Smith
+        groups:
+          type: array
+          items:
+            type: string
+          example: [admins]
+        disabled:
+          type: boolean
+        has_password:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    admin.NewUser:
+      type: object
+      required:
+        - username
+        - email
+      properties:
+        username:
+          type: string
+          description: Lowercase letters, digits, '.', '_', '@', and '-', starting with a letter or digit.
+          maxLength: 100
+          example: john
+        email:
+          type: string
+          maxLength: 255
+          example: john@example.com
+        display_name:
+          type: string
+          maxLength: 255
+        given_name:
+          type: string
+          maxLength: 100
+        family_name:
+          type: string
+          maxLength: 100
+        groups:
+          type: array
+          items:
+            type: string
+        disabled:
+          type: boolean
+        password:
+          type: string
+          description: A plain password, which must meet the password policy. At most one of password and password_digest.
+        password_digest:
+          type: string
+          description: A password digest in the PHC string format, stored as it is.
+    admin.UserChanges:
+      type: object
+      properties:
+        email:
+          type: string
+        display_name:
+          type: string
+        given_name:
+          type: string
+        family_name:
+          type: string
+        disabled:
+          type: boolean
+    admin.Password:
+      type: object
+      properties:
+        password:
+          type: string
+        password_digest:
+          type: string
+    admin.Group:
+      type: object
+      properties:
+        name:
+          type: string
+          example: admins
+        created_at:
+          type: string
+          format: date-time
     handlers.checkURIWithinDomainRequestBody:
       type: object
       properties:
@@ -7685,6 +8211,12 @@ components:
         OAuth 2.0 client authentication using the client_secret_basic method, where the client identifier and secret
         are sent in the Authorization header. Clients using the client_secret_post, client_secret_jwt, private_key_jwt,
         or none methods send their client identifier and credentials in the request body instead.
+    admin_bearer:
+      type: http
+      scheme: bearer
+      description: >
+        An OAuth 2.0 Access Token issued by this server with the client credentials grant, granted the audience of the
+        issuer followed by /api/admin and the authelia.admin.read or authelia.admin.write scope.
     oauth2_bearer:
       type: http
       scheme: bearer

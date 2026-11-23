@@ -6,20 +6,24 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+	"go.uber.org/mock/gomock"
 
 	oauthelia2 "authelia.com/provider/oauth2"
 	"authelia.com/provider/oauth2/handler/openid"
 	fjwt "authelia.com/provider/oauth2/token/jwt"
 
 	"github.com/authelia/authelia/v4/internal/configuration/schema"
+	"github.com/authelia/authelia/v4/internal/management"
 	"github.com/authelia/authelia/v4/internal/middlewares"
 	"github.com/authelia/authelia/v4/internal/mocks"
 	"github.com/authelia/authelia/v4/internal/model"
@@ -354,4 +358,117 @@ func mustMintTestAdminToken(t *testing.T, mock *mocks.MockAutheliaCtx, clientCre
 	require.NoError(t, mock.StorageMock.SaveOAuth2Session(mock.Ctx, storage.OAuth2SessionTypeAccessToken, *oauthSession))
 
 	return token
+}
+
+func newTestAdminService(t *testing.T) *management.Service {
+	t.Helper()
+
+	config := &schema.Configuration{
+		Storage: schema.Storage{
+			EncryptionKey: "authelia-test-key-not-a-secret-authelia-test-key-not-a-secret",
+			Local:         &schema.StorageLocal{Path: filepath.Join(t.TempDir(), "db.sqlite3")},
+		},
+	}
+
+	store, err := storage.NewSQLiteProvider(config)
+	require.NoError(t, err)
+	require.NoError(t, store.StartupCheck())
+
+	t.Cleanup(func() { _ = store.Close() })
+
+	service, err := management.New(&schema.AuthenticationBackendDatabase{Password: schema.DefaultCIPasswordConfig}, store, nil)
+	require.NoError(t, err)
+
+	return service
+}
+
+func TestAdminUsersAndGroupsHandlers(t *testing.T) {
+	service := newTestAdminService(t)
+
+	type step struct {
+		name    string
+		handler middlewares.RequestHandler
+		values  map[string]string
+		query   string
+		body    string
+		ctype   string
+		status  int
+		contain string
+	}
+
+	steps := []step{
+		{"ShouldCreateGroup", AdminGroupsPOST(service), nil, "", `{"name":"sgnl_users"}`, "", http.StatusCreated, `"name":"sgnl_users"`},
+		{"ShouldRefuseDuplicateGroup", AdminGroupsPOST(service), nil, "", `{"name":"sgnl_users"}`, "", http.StatusConflict, `"error":"conflict"`},
+		{"ShouldCreateUser", AdminUsersPOST(service), nil, "", `{"username":"Jane.Doe","email":"jane@example.com","groups":["sgnl_users"],"password":"a-long-password"}`, "", http.StatusCreated, `"username":"jane.doe"`},
+		{"ShouldCreateUserWithAt", AdminUsersPOST(service), nil, "", `{"username":"ops@example.org","email":"ops@example.org"}`, "", http.StatusCreated, `"has_password":false`},
+		{"ShouldNotExposeDigest", AdminUserGET(service), map[string]string{"username": "jane.doe"}, "", "", "", http.StatusOK, `"has_password":true`},
+		{"ShouldDecodeEscapedUsername", AdminUserGET(service), map[string]string{"username": "ops%40example.org"}, "", "", "", http.StatusOK, `"username":"ops@example.org"`},
+		{"ShouldRefuseUnknownField", AdminUserPATCH(service), map[string]string{"username": "jane.doe"}, "", `{"displayname":"x"}`, "", http.StatusBadRequest, `unknown field`},
+		{"ShouldRefuseWrongContentType", AdminUserPATCH(service), map[string]string{"username": "jane.doe"}, "", `{"display_name":"x"}`, "text/plain", http.StatusBadRequest, `content type`},
+		{"ShouldAcceptContentTypeWithCharset", AdminUserPATCH(service), map[string]string{"username": "jane.doe"}, "", `{"display_name":"Jane","disabled":true}`, "application/json; charset=utf-8", http.StatusOK, `"disabled":true`},
+		{"ShouldRefuseEmptyPassword", AdminUserPasswordPUT(service), map[string]string{"username": "jane.doe"}, "", `{}`, "", http.StatusBadRequest, `use DELETE`},
+		{"ShouldSetPasswordDigest", AdminUserPasswordPUT(service), map[string]string{"username": "ops@example.org"}, "", `{"password_digest":"$plaintext$password"}`, "", http.StatusNoContent, ``},
+		{"ShouldRemovePassword", AdminUserPasswordDELETE(service), map[string]string{"username": "jane.doe"}, "", "", "", http.StatusNoContent, ``},
+		{"ShouldAddToGroup", AdminUserGroupPUT(service), map[string]string{"username": "ops@example.org", "group": "sgnl_users"}, "", "", "", http.StatusNoContent, ``},
+		{"ShouldRefuseMissingGroup", AdminUserGroupPUT(service), map[string]string{"username": "ops@example.org", "group": "missing"}, "", "", "", http.StatusNotFound, `"error":"not_found"`},
+		{"ShouldListMembers", AdminGroupMembersGET(service), map[string]string{"group": "sgnl_users"}, "", "", "", http.StatusOK, `{"members":["jane.doe","ops@example.org"]}`},
+		{"ShouldRemoveFromGroup", AdminUserGroupDELETE(service), map[string]string{"username": "ops@example.org", "group": "sgnl_users"}, "", "", "", http.StatusNoContent, ``},
+		{"ShouldListUsers", AdminUsersGET(service), nil, "limit=1&page=1", "", "", http.StatusOK, `"users":[{"username":"ops@example.org"`},
+		{"ShouldRefuseBadLimit", AdminUsersGET(service), nil, "limit=abc", "", "", http.StatusBadRequest, `must be an integer`},
+		{"ShouldListGroups", AdminGroupsGET(service), nil, "", "", "", http.StatusOK, `"name":"sgnl_users"`},
+		{"ShouldDeleteUser", AdminUserDELETE(service), map[string]string{"username": "jane.doe"}, "", "", "", http.StatusNoContent, ``},
+		{"ShouldNotFindDeletedUser", AdminUserGET(service), map[string]string{"username": "jane.doe"}, "", "", "", http.StatusNotFound, `"error":"not_found"`},
+		{"ShouldRefuseDeletedUsername", AdminUsersPOST(service), nil, "", `{"username":"jane.doe","email":"jane2@example.com"}`, "", http.StatusConflict, `deleted user`},
+		{"ShouldDeleteGroup", AdminGroupDELETE(service), map[string]string{"group": "sgnl_users"}, "", "", "", http.StatusNoContent, ``},
+		{"ShouldWhoAmI", AdminWhoAmIGET, nil, "", "", "", http.StatusOK, `"client_id":""`},
+	}
+
+	for _, st := range steps {
+		t.Run(st.name, func(t *testing.T) {
+			mock := mocks.NewMockAutheliaCtx(t)
+			defer mock.Close()
+
+			// The handlers pass the request context to a real database here, which needs the context of a server.
+			mock.Ctx.Init(&fasthttp.Request{}, nil, nil)
+
+			for k, v := range st.values {
+				mock.Ctx.SetUserValue(k, v)
+			}
+
+			mock.Ctx.Request.URI().SetQueryString(st.query)
+
+			if st.body != "" {
+				ctype := st.ctype
+				if ctype == "" {
+					ctype = "application/json"
+				}
+
+				mock.Ctx.Request.Header.SetContentType(ctype)
+				mock.Ctx.Request.SetBodyString(st.body)
+			}
+
+			st.handler(mock.Ctx)
+
+			assert.Equal(t, st.status, mock.Ctx.Response.StatusCode(), string(mock.Ctx.Response.Body()))
+			assert.Contains(t, string(mock.Ctx.Response.Body()), st.contain)
+			assert.NotContains(t, string(mock.Ctx.Response.Body()), "$argon2")
+			assert.NotContains(t, string(mock.Ctx.Response.Body()), "$plaintext")
+		})
+	}
+}
+
+func TestAdminHandlersReportServerErrorsWithoutDetails(t *testing.T) {
+	mock := mocks.NewMockAutheliaCtx(t)
+	defer mock.Close()
+
+	service, err := management.New(&schema.AuthenticationBackendDatabase{Password: schema.DefaultCIPasswordConfig}, mock.StorageMock, nil)
+	require.NoError(t, err)
+
+	mock.StorageMock.EXPECT().LoadAuthenticationGroups(gomock.Any()).Return(nil, errors.New("connection refused to 10.0.0.1"))
+
+	AdminGroupsGET(service)(mock.Ctx)
+
+	assert.Equal(t, http.StatusInternalServerError, mock.Ctx.Response.StatusCode())
+	assert.NotContains(t, string(mock.Ctx.Response.Body()), "10.0.0.1")
+	assert.Contains(t, string(mock.Ctx.Response.Body()), `"error":"server_error"`)
 }

@@ -25,6 +25,7 @@ import (
 	"github.com/authelia/authelia/v4/internal/configuration/schema"
 	"github.com/authelia/authelia/v4/internal/handlers"
 	"github.com/authelia/authelia/v4/internal/logging"
+	"github.com/authelia/authelia/v4/internal/management"
 	"github.com/authelia/authelia/v4/internal/metrics"
 	"github.com/authelia/authelia/v4/internal/middlewares"
 	"github.com/authelia/authelia/v4/internal/oidc"
@@ -398,7 +399,10 @@ func handlerMain(config *schema.Configuration, providers middlewares.Providers) 
 
 	if providers.OpenIDConnect != nil {
 		RegisterOpenIDConnectRoutes(r, config, providers)
-		RegisterAdminRoutes(r, config, providers)
+
+		if err = RegisterAdminRoutes(r, config, providers); err != nil {
+			return nil, err
+		}
 	}
 
 	r.RedirectFixedPath = false
@@ -418,14 +422,46 @@ func handlerMain(config *schema.Configuration, providers middlewares.Providers) 
 }
 
 // RegisterAdminRoutes handles registration of the administration API routes. The administration API is authorized
-// only with OAuth 2.0 Access Tokens issued by this server, so it requires the OpenID Connect 1.0 provider.
-func RegisterAdminRoutes(r *router.Router, config *schema.Configuration, providers middlewares.Providers) {
-	middlewareAdminRead := middlewares.NewBridgeBuilder(*config, providers).
-		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
-		WithPostMiddlewares(middlewares.RequireBearerClientCredentials(prefixAPIAdmin, oidc.ScopeAutheliaAdminRead)).
-		Build()
+// only with OAuth 2.0 Access Tokens issued by this server, so it requires the OpenID Connect 1.0 provider. The users and
+// groups routes are only registered when the database authentication backend is configured.
+func RegisterAdminRoutes(r *router.Router, config *schema.Configuration, providers middlewares.Providers) (err error) {
+	builder := func(scope string) middlewares.Bridge {
+		return middlewares.NewBridgeBuilder(*config, providers).
+			WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
+			WithPostMiddlewares(middlewares.RequireBearerClientCredentials(prefixAPIAdmin, scope)).
+			Build()
+	}
 
-	r.GET(prefixAPIAdmin+"/whoami", middlewareAdminRead(handlers.AdminWhoAmIGET))
+	read, write := builder(oidc.ScopeAutheliaAdminRead), builder(oidc.ScopeAutheliaAdminWrite)
+
+	r.GET(prefixAPIAdmin+"/whoami", read(handlers.AdminWhoAmIGET))
+
+	if config.AuthenticationBackend.Database == nil {
+		return nil
+	}
+
+	var service *management.Service
+
+	if service, err = management.New(config.AuthenticationBackend.Database, providers.StorageProvider, providers.PasswordPolicy); err != nil {
+		return fmt.Errorf("error initializing the administration API: %w", err)
+	}
+
+	r.GET(prefixAPIAdmin+"/users", read(handlers.AdminUsersGET(service)))
+	r.POST(prefixAPIAdmin+"/users", write(handlers.AdminUsersPOST(service)))
+	r.GET(prefixAPIAdmin+"/users/{username}", read(handlers.AdminUserGET(service)))
+	r.PATCH(prefixAPIAdmin+"/users/{username}", write(handlers.AdminUserPATCH(service)))
+	r.DELETE(prefixAPIAdmin+"/users/{username}", write(handlers.AdminUserDELETE(service)))
+	r.PUT(prefixAPIAdmin+"/users/{username}/password", write(handlers.AdminUserPasswordPUT(service)))
+	r.DELETE(prefixAPIAdmin+"/users/{username}/password", write(handlers.AdminUserPasswordDELETE(service)))
+	r.PUT(prefixAPIAdmin+"/users/{username}/groups/{group}", write(handlers.AdminUserGroupPUT(service)))
+	r.DELETE(prefixAPIAdmin+"/users/{username}/groups/{group}", write(handlers.AdminUserGroupDELETE(service)))
+
+	r.GET(prefixAPIAdmin+"/groups", read(handlers.AdminGroupsGET(service)))
+	r.POST(prefixAPIAdmin+"/groups", write(handlers.AdminGroupsPOST(service)))
+	r.DELETE(prefixAPIAdmin+"/groups/{group}", write(handlers.AdminGroupDELETE(service)))
+	r.GET(prefixAPIAdmin+"/groups/{group}/members", read(handlers.AdminGroupMembersGET(service)))
+
+	return nil
 }
 
 // RegisterOpenIDConnectRoutes handles registration of OpenID Connect 1.0 routes.
