@@ -246,3 +246,25 @@ Not covered yet:
   The token, userinfo, and introspection changes are what those suites would exercise.
 - **JWT access tokens** that an app validates itself stay valid after a disable until they expire. Keep their
   lifespans short (SGNL uses 5 minutes).
+
+### M2 tests (2026-11-23, `sgnl/e2e/run.sh` in CI, `sgnl/e2e/browser/run.sh` by hand)
+
+- **Revoke (15 checks):**
+  - a per-client logout ends that client's tokens only;
+  - a full logout ends portal sessions, every client's tokens, and pending links;
+  - disable then enable leaves the old refresh token and session dead.
+- **Audit (5 checks):** changes are listed newest first with the client as actor and the changed fields, never a
+  password; events list the login attempts.
+- **Invite (15 checks):**
+  - the link arrives by mail only, with the invite wording;
+  - redeeming it sets a password and logs the user in with an elevated session;
+  - a used, expired, superseded, or disabled-user link is refused, also after re-enabling the user;
+  - disabled and unknown users can't be invited, and the lifespan is bounded.
+- **Browser (8 checks, Chrome with a virtual authenticator):**
+  - an invited user sets a password and lands on the passkey settings already logged in;
+  - the passkey is registered without another one-time code;
+  - passkey login works;
+  - passkey login is refused once the user is disabled ("user not found", not a sign-count error).
+
+Not covered yet: the SAML rows of M2's exit test wait for SAML (M3). The suspend test against SGNL's real apps is
+SGNL-side work.
