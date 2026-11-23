@@ -1,0 +1,176 @@
+# SPDX-FileCopyrightText: 2026 SGNL fork contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+"""M3 (C6): the SAML 2.0 identity provider, against the local service provider in samlsp/."""
+
+import atexit
+import base64
+import html
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.parse
+import http.client
+
+from lib import BASE, ISS, Client, admin_headers, check, login, summary
+
+DIR = os.environ['E2E_DIR']
+SPS = {name: 9100 + i for i, name in enumerate(['sp1', 'sp2', 'sp3', 'sp4', 'unknown'], start=1)}
+
+api, A = Client(), admin_headers()
+
+api.req('POST', '/api/admin/groups', {'name': 'staff'}, A)
+api.req('POST', '/api/admin/users', {'username': 'sam', 'email': 'sam@example.com', 'groups': ['staff'],
+                                     'password': 'a-long-password-5'}, A)
+
+# Metadata.
+st, h, metadata = api.req('GET', '/api/saml/metadata')
+check('metadata is served', st == 200 and 'EntityDescriptor' in metadata, metadata[:200])
+check('the entity ID is the issuer', f'entityID="{ISS}"' in metadata, metadata[:300])
+check('the SSO URL is the Keycloak path (enable_keycloak_endpoints)', f'Location="{ISS}/protocol/saml"' in metadata)
+
+st, _, descriptor = api.req('GET', '/protocol/saml/descriptor')
+check('metadata is also served at Keycloak\'s path', st == 200 and f'entityID="{ISS}"' in descriptor, descriptor[:200])
+
+conn = http.client.HTTPConnection('127.0.0.1', 9091)
+conn.request('GET', '/api/saml/metadata', headers={'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': 'id.example.com', 'Host': 'id.example.com'})
+check('an issuer which is not a configured authelia_url gets no SAML (404)', conn.getresponse().status == 404)
+
+with open(os.path.join(DIR, 'idp-metadata.xml'), 'w') as f:
+    f.write(metadata)
+
+procs = []
+
+for name, port in SPS.items():
+    procs.append(subprocess.Popen([os.path.join(DIR, 'samlsp'), '-listen', f'127.0.0.1:{port}',
+                                   '-entity-id', f'https://{name}.example.com/saml/metadata',
+                                   '-acs', f'https://{name}.example.com/saml/acs',
+                                   '-idp-metadata', os.path.join(DIR, 'idp-metadata.xml'),
+                                   '-key', os.path.join(DIR, 'sp.key'), '-cert', os.path.join(DIR, 'sp.crt')],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+
+atexit.register(lambda: [p.kill() for p in procs])
+time.sleep(1)
+
+
+def sp(name, method, path, form=None):
+    conn = http.client.HTTPConnection('127.0.0.1', SPS[name])
+    body = urllib.parse.urlencode(form) if form else None
+    conn.request(method, path, body, {'Content-Type': 'application/x-www-form-urlencoded'} if form else {})
+
+    return json.loads(conn.getresponse().read())
+
+
+def idp_path(url):
+    """The path of an identity provider URL below the realm, which the client prefixes again."""
+    return urllib.parse.urlparse(url).path[len(BASE):] + ('?' + urllib.parse.urlparse(url).query if urllib.parse.urlparse(url).query else '')
+
+
+def send_request(client, name, binding='redirect', sign=False, force=False, acs='', tamper=False):
+    """Sends an authentication request of the service provider through the client and returns the HTTP answer."""
+    start = sp(name, 'GET', f'/start?binding={binding}&sign={int(sign)}&force={int(force)}&acs={urllib.parse.quote(acs)}')
+
+    if tamper:
+        # Changes the signed request after signing: the signature no longer covers it.
+        xml = base64.b64decode(start['form']['SAMLRequest']).decode()
+        start['form']['SAMLRequest'] = base64.b64encode(xml.replace('ID="id-', 'ID="id-0', 1).encode()).decode()
+
+    if binding == 'post':
+        return client.req('POST', idp_path(start['url']), start['form'], form=True)
+
+    return client.req('GET', idp_path(start['url']))
+
+
+def deliver(name, page):
+    """Posts the response of an auto-submitting page to the service provider and returns its verdict."""
+    form = dict(re.findall(r'name="(SAMLResponse|RelayState)" value="([^"]*)"', page))
+
+    if 'SAMLResponse' not in form:
+        return {'error': 'no response form', 'page': page[:200]}
+
+    return sp(name, 'POST', '/acs', {k: html.unescape(v) for k, v in form.items()})
+
+
+def flow_id(location):
+    return urllib.parse.parse_qs(urllib.parse.urlparse(location).query).get('flow_id', [None])[0]
+
+
+# SP-initiated login with the HTTP-Redirect binding: the anonymous user is sent to the portal and resumed after login.
+user = Client()
+st, h, _ = send_request(user, 'sp1')
+location = h.get('Location', '')
+fid = flow_id(location)
+check('an anonymous user is sent to the portal with the SAML flow', st == 303 and 'flow=saml' in location and fid, location)
+
+st, _, b = user.req('POST', '/api/firstfactor', {'username': 'sam', 'password': 'a-long-password-5', 'flow': 'saml', 'flowID': fid})
+resume = json.loads(b).get('data', {}).get('redirect', '')
+check('after login the portal is told to resume the request', st == 200 and '/api/saml/sso/resume?flow_id=' in resume, b)
+
+st, h, page = user.req('GET', idp_path(resume))
+check('the response page is allowed to submit itself by the Content-Security-Policy only',
+      st == 200 and "script-src 'sha256-" in h.get('Content-Security-Policy', '') and 'unsafe-inline' not in h.get('Content-Security-Policy', ''),
+      h.get('Content-Security-Policy'))
+result = deliver('sp1', page)
+check('the service provider accepts the response, NameID = email',
+      result.get('name_id') == 'sam@example.com' and result.get('name_id_format', '').endswith('emailAddress'), result)
+check('the configured attributes are released', result.get('attributes', {}).get('groups') == ['staff']
+      and result.get('attributes', {}).get('email') == ['sam@example.com'], result)
+
+st, _, _ = user.req('GET', idp_path(resume))
+check('a resumed flow can not be used again', st == 400)
+
+st, _, _ = user.req('GET', '/api/saml/sso/resume?flow_id=00000000-0000-0000-0000-000000000000')
+check('an unknown flow is refused', st == 400)
+
+# A logged in user gets the response at once, with the HTTP-POST binding and at Keycloak's path.
+st, _, page = send_request(user, 'sp1', binding='post')
+result = deliver('sp1', page)
+check('HTTP-POST binding with a session: response at once', result.get('name_id') == 'sam@example.com', result)
+
+# Step-up: a one-factor session against a two-factor service provider.
+st, h, _ = send_request(user, 'sp2')
+fid2 = flow_id(h.get('Location', ''))
+check('a one-factor session is sent to the portal for a two-factor service provider', st == 303 and fid2, h.get('Location'))
+
+st, _, b = user.req('POST', '/api/firstfactor', {'username': 'sam', 'password': 'a-long-password-5', 'flow': 'saml', 'flowID': fid2})
+check('after the first factor the portal asks for the second factor', st == 200 and 'redirect' not in b, b)
+
+# Signed requests.
+st, _, page = send_request(user, 'sp3', sign=False)
+check('an unsigned request is refused where the service provider signs its requests', 'error' in deliver('sp3', page) or st >= 400, page[:200])
+
+st, _, page = send_request(user, 'sp3', sign=True)
+result = deliver('sp3', page)
+check('a signed request is answered', result.get('name_id') == 'sam@example.com', result)
+
+st, _, page = send_request(user, 'sp3', binding='post', sign=True, tamper=True)
+check('a tampered signed request gets no assertion', 'SAMLResponse' not in page or 'error' in deliver('sp3', page), f'{st} {page[:120]}')
+
+# An assertion consumer service URL which isn't registered for the service provider.
+st, _, page = send_request(user, 'sp1', acs='https://evil.example.com/saml/acs')
+check('an unregistered ACS URL gets no response', 'evil.example.com' not in page and 'SAMLResponse' not in page, f'{st} {page[:160]}')
+
+# Group restriction.
+st, _, page = send_request(user, 'sp4')
+result = deliver('sp4', page)
+check('a user outside the allowed groups gets RequestDenied, not an assertion', 'error' in result and any(c.endswith(':RequestDenied') for c in result.get('status_codes') or []), result)
+
+# Unknown service provider.
+st, _, page = send_request(user, 'unknown')
+check('an unknown service provider gets no response', st >= 400 and 'SAMLResponse' not in page, f'{st} {page[:120]}')
+
+# ForceAuthn can't be satisfied without a login form of our own, and must not loop.
+st, h, page = send_request(user, 'sp1', force=True)
+result = deliver('sp1', page) if st == 200 else {'error': f'http {st}'}
+check('ForceAuthn is refused with a status, without a loop', 'error' in result and st != 303, f'{st} {result}')
+
+# A disabled user with a live session gets nothing.
+api.req('PATCH', '/api/admin/users/sam', {'disabled': True}, A)
+st, h, page = send_request(user, 'sp1')
+check('a disabled user gets no assertion', 'SAMLResponse' not in page, f'{st} {page[:120]}')
+
+sys.exit(summary())

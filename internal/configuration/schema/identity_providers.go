@@ -14,6 +14,38 @@ import (
 // IdentityProviders represents the Identity Providers configuration for Authelia.
 type IdentityProviders struct {
 	OIDC *IdentityProvidersOpenIDConnect `koanf:"oidc" yaml:"oidc,omitempty" toml:"oidc,omitempty" json:"oidc,omitempty" jsonschema:"title=OpenID Connect 1.0" jsonschema_description:"OpenID Connect 1.0 configuration."`
+	SAML *IdentityProvidersSAML          `koanf:"saml" yaml:"saml,omitempty" toml:"saml,omitempty" json:"saml,omitempty" jsonschema:"title=SAML 2.0" jsonschema_description:"SAML 2.0 identity provider configuration."`
+}
+
+// IdentityProvidersSAML represents the configuration of the SAML 2.0 identity provider.
+type IdentityProvidersSAML struct {
+	EntityID         string               `koanf:"entity_id" yaml:"entity_id,omitempty" toml:"entity_id,omitempty" json:"entity_id,omitempty" jsonschema:"title=Entity ID" jsonschema_description:"The entity ID of the identity provider, which service providers know it by. Defaults to the issuer of the request."`
+	Key              CryptographicKey     `koanf:"key" yaml:"key,omitempty" toml:"key,omitempty" json:"key,omitempty" jsonschema:"title=Key" jsonschema_description:"The private key which signs responses and assertions, in PEM format."`
+	CertificateChain X509CertificateChain `koanf:"certificate_chain" yaml:"certificate_chain,omitempty" toml:"certificate_chain,omitempty" json:"certificate_chain,omitempty" jsonschema:"title=Certificate Chain" jsonschema_description:"The certificate chain of the key, which the metadata publishes and service providers verify signatures with."`
+
+	AssertionLifespan time.Duration `koanf:"assertion_lifespan" yaml:"assertion_lifespan,omitempty" toml:"assertion_lifespan,omitempty" json:"assertion_lifespan,omitempty" jsonschema:"default=5 minutes,title=Assertion Lifespan" jsonschema_description:"How long an assertion is valid after it is made."`
+
+	// EnableKeycloakEndpoints also serves the SSO and metadata endpoints at Keycloak's paths, so service providers
+	// configured for a Keycloak realm with the same issuer keep working without being reconfigured.
+	EnableKeycloakEndpoints bool `koanf:"enable_keycloak_endpoints" yaml:"enable_keycloak_endpoints" toml:"enable_keycloak_endpoints" json:"enable_keycloak_endpoints" jsonschema:"default=false,title=Enable Keycloak Endpoints" jsonschema_description:"Also serves the endpoints at Keycloak's paths: '/protocol/saml' for SSO and '/protocol/saml/descriptor' for the metadata."`
+
+	ServiceProviders []IdentityProvidersSAMLServiceProvider `koanf:"service_providers" yaml:"service_providers,omitempty" toml:"service_providers,omitempty" json:"service_providers,omitempty" jsonschema:"title=Service Providers" jsonschema_description:"The service providers which may use the identity provider."`
+}
+
+// IdentityProvidersSAMLServiceProvider represents the configuration of a SAML 2.0 service provider.
+type IdentityProvidersSAMLServiceProvider struct {
+	EntityID    string `koanf:"entity_id" yaml:"entity_id,omitempty" toml:"entity_id,omitempty" json:"entity_id,omitempty" jsonschema:"title=Entity ID" jsonschema_description:"The entity ID of the service provider."`
+	Description string `koanf:"description" yaml:"description,omitempty" toml:"description,omitempty" json:"description,omitempty" jsonschema:"title=Description" jsonschema_description:"A description of the service provider."`
+
+	AssertionConsumerServiceURLs []url.URL `koanf:"assertion_consumer_service_urls" yaml:"assertion_consumer_service_urls,omitempty" toml:"assertion_consumer_service_urls,omitempty" json:"assertion_consumer_service_urls,omitempty" jsonschema:"title=Assertion Consumer Service URLs" jsonschema_description:"The URLs the responses are posted to with the HTTP-POST binding. The first is the default."`
+
+	Certificate X509CertificateChain `koanf:"certificate" yaml:"certificate,omitempty" toml:"certificate,omitempty" json:"certificate,omitempty" jsonschema:"title=Certificate" jsonschema_description:"The certificate the service provider signs its requests with. When it's set, unsigned requests are refused."`
+
+	NameIDFormat        string   `koanf:"name_id_format" yaml:"name_id_format,omitempty" toml:"name_id_format,omitempty" json:"name_id_format,omitempty" jsonschema:"default=email,enum=email,enum=unspecified,title=NameID Format" jsonschema_description:"How the user is named to the service provider: the email, or the username."`
+	AuthorizationPolicy string   `koanf:"authorization_policy" yaml:"authorization_policy,omitempty" toml:"authorization_policy,omitempty" json:"authorization_policy,omitempty" jsonschema:"default=two_factor,enum=one_factor,enum=two_factor,title=Authorization Policy" jsonschema_description:"The authentication level the user needs for the service provider."`
+	Groups              []string `koanf:"groups" yaml:"groups,omitempty" toml:"groups,omitempty" json:"groups,omitempty" jsonschema:"title=Groups" jsonschema_description:"When set, only members of one of these groups may use the service provider."`
+	Sign                string   `koanf:"sign" yaml:"sign,omitempty" toml:"sign,omitempty" json:"sign,omitempty" jsonschema:"default=both,enum=both,enum=response,enum=assertion,title=Sign" jsonschema_description:"Which of the response and the assertion are signed."`
+	Attributes          []string `koanf:"attributes" yaml:"attributes,omitempty" toml:"attributes,omitempty" json:"attributes,omitempty" jsonschema:"enum=username,enum=email,enum=name,enum=given_name,enum=family_name,enum=groups,title=Attributes" jsonschema_description:"The attributes of the user which are released to the service provider."`
 }
 
 // IdentityProvidersOpenIDConnect represents the configuration for OpenID Connect 1.0.

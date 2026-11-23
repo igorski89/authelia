@@ -27,6 +27,7 @@ import (
 // ValidateIdentityProviders validates and updates the IdentityProviders configuration.
 func ValidateIdentityProviders(ctx *ValidateCtx, config *schema.Configuration, validator *schema.StructValidator) {
 	validateOIDC(ctx, config, validator)
+	validateSAML(config, validator)
 }
 
 func validateOIDC(ctx *ValidateCtx, config *schema.Configuration, validator *schema.StructValidator) {

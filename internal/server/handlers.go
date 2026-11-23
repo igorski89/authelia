@@ -29,6 +29,7 @@ import (
 	"github.com/authelia/authelia/v4/internal/metrics"
 	"github.com/authelia/authelia/v4/internal/middlewares"
 	"github.com/authelia/authelia/v4/internal/oidc"
+	"github.com/authelia/authelia/v4/internal/samlidp"
 	"github.com/authelia/authelia/v4/internal/utils"
 )
 
@@ -397,6 +398,10 @@ func handlerMain(config *schema.Configuration, providers middlewares.Providers) 
 		r.GET("/debug/vars", expvarhandler.ExpvarHandler)
 	}
 
+	if providers.SAML != nil {
+		RegisterSAMLRoutes(r, config, providers)
+	}
+
 	if providers.OpenIDConnect != nil {
 		RegisterOpenIDConnectRoutes(r, config, providers)
 
@@ -419,6 +424,28 @@ func handlerMain(config *schema.Configuration, providers middlewares.Providers) 
 	middleware := middlewares.NewTrustedProxies(config.Server.Headers.TrustedProxies)
 
 	return middleware(handler), nil
+}
+
+// RegisterSAMLRoutes handles registration of the SAML 2.0 identity provider routes, also at Keycloak's paths when
+// enable_keycloak_endpoints is set.
+func RegisterSAMLRoutes(r *router.Router, config *schema.Configuration, providers middlewares.Providers) {
+	bridge := middlewares.NewBridgeBuilder(*config, providers).
+		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore).
+		Build()
+
+	metadata := bridge(middlewares.NewHTTPToAutheliaHandlerAdaptor(handlers.SAMLMetadataGET))
+	sso := bridge(middlewares.NewHTTPToAutheliaHandlerAdaptor(handlers.SAMLSSO))
+
+	r.GET(samlidp.EndpointPathMetadata, metadata)
+	r.GET(samlidp.EndpointPathSSO, sso)
+	r.POST(samlidp.EndpointPathSSO, sso)
+	r.GET(samlidp.EndpointPathSSO+"/resume", bridge(middlewares.NewHTTPToAutheliaHandlerAdaptor(handlers.SAMLSSOResumeGET)))
+
+	if config.IdentityProviders.SAML.EnableKeycloakEndpoints {
+		r.GET(samlidp.EndpointPathKeycloakMetadata, metadata)
+		r.GET(samlidp.EndpointPathKeycloakSSO, sso)
+		r.POST(samlidp.EndpointPathKeycloakSSO, sso)
+	}
 }
 
 // RegisterAdminRoutes handles registration of the administration API routes. The administration API is authorized

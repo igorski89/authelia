@@ -255,6 +255,8 @@ func resolveFlowResponse(ctx *middlewares.AutheliaCtx, userSession *session.User
 	switch flow {
 	case flowNameOpenIDConnect:
 		return resolveFlowResponseOpenIDConnect(ctx, userSession, details, id, subflow, userCode)
+	case flowNameSAML:
+		return resolveFlowResponseSAML(ctx, userSession, id)
 	default:
 		ctx.GetLogger().
 			WithFields(map[string]any{logging.FieldFlowID: id, logging.FieldFlow: flow, logging.FieldSubflow: subflow}).

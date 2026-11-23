@@ -1,0 +1,372 @@
+// SPDX-FileCopyrightText: 2026 Authelia
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package handlers
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	saml "authelia.com/provider/saml"
+
+	"github.com/authelia/authelia/v4/internal/authentication"
+	"github.com/authelia/authelia/v4/internal/authorization"
+	"github.com/authelia/authelia/v4/internal/logging"
+	"github.com/authelia/authelia/v4/internal/middlewares"
+	"github.com/authelia/authelia/v4/internal/model"
+	"github.com/authelia/authelia/v4/internal/samlidp"
+	"github.com/authelia/authelia/v4/internal/session"
+)
+
+const (
+	flowNameSAML = "saml"
+
+	// samlFlowLifespan is how long a SAML authentication request waits for the user to log in.
+	samlFlowLifespan = 15 * time.Minute
+
+	// samlEndpointPathResume is where the portal sends the user back to once logged in, to resume the request.
+	samlEndpointPathResume = "/api/saml/sso/resume"
+
+	// samlRefedsMFA is the authentication context class of a session with two factors.
+	samlRefedsMFA = "https://refeds.org/profile/mfa"
+)
+
+type ctxKeySAMLAutheliaCtx struct{}
+
+// SAMLMetadataGET serves the metadata of the SAML 2.0 identity provider.
+func SAMLMetadataGET(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *http.Request) {
+	idp, ok := samlIdentityProvider(ctx, rw)
+	if !ok {
+		return
+	}
+
+	idp.ServeMetadata(rw, r)
+}
+
+// SAMLSSO serves the SAML 2.0 single sign-on endpoint with the HTTP-Redirect and HTTP-POST bindings.
+func SAMLSSO(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *http.Request) {
+	idp, ok := samlIdentityProvider(ctx, rw)
+	if !ok {
+		return
+	}
+
+	rw.Header().Set("Content-Security-Policy", samlidp.ContentSecurityPolicy)
+
+	idp.ServeSSO(rw, r.WithContext(context.WithValue(r.Context(), ctxKeySAMLAutheliaCtx{}, ctx)))
+}
+
+// SAMLSSOResumeGET resumes a SAML authentication request once the user has logged in: the request kept for the flow
+// is presented to the single sign-on endpoint again, as the form a login page would post. A flow can be used once.
+func SAMLSSOResumeGET(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *http.Request) {
+	idp, ok := samlIdentityProvider(ctx, rw)
+	if !ok {
+		return
+	}
+
+	flow, err := ctx.Providers.StorageProvider.ConsumeSAMLFlow(ctx, r.URL.Query().Get(queryArgFlowID))
+	if err != nil {
+		ctx.GetLogger().WithError(err).Error("Error occurred resuming a SAML authentication request")
+		http.Error(rw, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+
+		return
+	}
+
+	form := url.Values{}
+
+	if err = json.Unmarshal([]byte(flow.Form), &form); err != nil {
+		ctx.GetLogger().WithError(err).Error("Error occurred decoding a SAML authentication request")
+		http.Error(rw, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+
+		return
+	}
+
+	resume, err := http.NewRequestWithContext(context.WithValue(r.Context(), ctxKeySAMLAutheliaCtx{}, ctx), http.MethodPost, idp.SSOURL.String(), strings.NewReader(form.Encode()))
+	if err != nil {
+		http.Error(rw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+
+		return
+	}
+
+	resume.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resume.RemoteAddr = r.RemoteAddr
+
+	rw.Header().Set("Content-Security-Policy", samlidp.ContentSecurityPolicy)
+
+	idp.ServeSSO(rw, resume)
+}
+
+func samlIdentityProvider(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter) (idp *saml.IdentityProvider, ok bool) {
+	issuer, err := ctx.IssuerURL()
+	if err != nil || ctx.Providers.SAML == nil || !samlIsConfiguredIssuer(ctx, issuer) {
+		ctx.GetLogger().WithError(err).Error("Error occurred determining the issuer of a SAML request: SAML is only served at a configured authelia_url")
+		http.Error(rw, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+
+		return nil, false
+	}
+
+	return ctx.Providers.SAML.IdentityProvider(issuer, samlSessions{}, samlObserver{}), true
+}
+
+// samlIsConfiguredIssuer returns true if the issuer is the authelia_url of a session cookie. The identity provider of
+// an issuer is kept for the life of the process, so only these issuers get one.
+func samlIsConfiguredIssuer(ctx *middlewares.AutheliaCtx, issuer *url.URL) bool {
+	for _, cookie := range ctx.Configuration.Session.Cookies {
+		if cookie.AutheliaURL != nil && strings.TrimSuffix(cookie.AutheliaURL.String(), "/") == strings.TrimSuffix(issuer.String(), "/") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// samlSessions is the session provider of the identity provider: the session of the Authelia portal.
+type samlSessions struct{}
+
+// GetSession implements saml.SessionProvider. It returns the session of the logged in user when its authentication
+// level satisfies the service provider, and otherwise keeps the request in the session and sends the user to the
+// portal, which resumes it once the user has logged in.
+func (samlSessions) GetSession(rw http.ResponseWriter, r *http.Request, req *saml.IdpAuthnRequest) *saml.Session {
+	ctx, ok := r.Context().Value(ctxKeySAMLAutheliaCtx{}).(*middlewares.AutheliaCtx)
+	if !ok || req.ServiceProviderMetadata == nil {
+		http.Error(rw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+
+		return nil
+	}
+
+	sp := ctx.Providers.SAML.ServiceProvider(req.ServiceProviderMetadata.EntityID)
+	if sp == nil {
+		http.Error(rw, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+
+		return nil
+	}
+
+	userSession, err := ctx.GetSession()
+	if err != nil {
+		ctx.GetLogger().WithError(err).Error("Error occurred retrieving the session for a SAML authentication request")
+		http.Error(rw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+
+		return nil
+	}
+
+	level := userSession.AuthenticationLevel(ctx.Configuration.WebAuthn.EnablePasskey2FA)
+
+	// A request with ForceAuthn is answered with AuthnFailed by the library, as this session provider can't
+	// authenticate the user again without a login form of its own.
+	if userSession.IsAnonymous() || !authorization.IsAuthLevelSufficient(level, samlRequiredLevel(sp)) {
+		samlLoginRedirect(ctx, rw, r, req, sp)
+
+		return nil
+	}
+
+	// The user is checked again, as forward-auth does: a disabled or deleted user is not asserted.
+	details, err := ctx.Providers.UserProvider.GetDetailsExtended(userSession.Username)
+	if err != nil {
+		ctx.GetLogger().WithError(err).WithField(logging.FieldUsername, userSession.Username).Error("Error occurred retrieving the details of the user for a SAML authentication request")
+		http.Error(rw, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+
+		return nil
+	}
+
+	return newSAMLSession(ctx, &userSession, details, sp, level)
+}
+
+func samlRequiredLevel(sp *samlidp.ServiceProvider) authorization.Level {
+	if sp.Config.AuthorizationPolicy == "one_factor" {
+		return authorization.OneFactor
+	}
+
+	return authorization.TwoFactor
+}
+
+// samlLoginRedirect keeps the request for a SAML flow and sends the user to the portal with it.
+func samlLoginRedirect(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *http.Request, req *saml.IdpAuthnRequest, sp *samlidp.ServiceProvider) {
+	issuer, err := ctx.IssuerURL()
+	if err != nil {
+		http.Error(rw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+
+		return
+	}
+
+	form, err := json.Marshal(req.ResumeFormValues())
+	if err != nil {
+		http.Error(rw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+
+		return
+	}
+
+	now := ctx.GetClock().Now()
+
+	flow := model.SAMLFlow{
+		FlowID:          uuid.NewString(),
+		CreatedAt:       now,
+		ExpiresAt:       now.Add(samlFlowLifespan),
+		ServiceProvider: sp.Config.EntityID,
+		Form:            string(form),
+	}
+
+	if err = ctx.Providers.StorageProvider.SaveSAMLFlow(ctx, flow); err != nil {
+		ctx.GetLogger().WithError(err).Error("Error occurred saving a SAML authentication request")
+		http.Error(rw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+
+		return
+	}
+
+	location := *issuer
+
+	if !strings.HasSuffix(location.Path, "/") {
+		location.Path += "/"
+	}
+
+	query := url.Values{}
+	query.Set(queryArgFlow, flowNameSAML)
+	query.Set(queryArgFlowID, flow.FlowID)
+	location.RawQuery = query.Encode()
+
+	// The location is the configured issuer with the flow parameters, never a value of the request.
+	http.Redirect(rw, r, location.String(), http.StatusSeeOther) //nolint:gosec // See above.
+}
+
+func newSAMLSession(ctx *middlewares.AutheliaCtx, userSession *session.UserSession, details *authentication.UserDetailsExtended, sp *samlidp.ServiceProvider, level authentication.Level) *saml.Session {
+	// The session index is derived from the public identifier, never from the session identifier itself.
+	index := sha256.Sum256([]byte("authelia:saml:session-index:" + userSession.PublicID))
+
+	s := &saml.Session{
+		ID:              userSession.PublicID,
+		CreateTime:      time.Unix(userSession.FirstFactorAuthnTimestamp, 0),
+		Index:           hex.EncodeToString(index[:]),
+		UserName:        details.Username,
+		Groups:          details.Groups,
+		UserCommonName:  details.DisplayName,
+		UserDisplayName: details.DisplayName,
+		UserGivenName:   details.GivenName,
+		UserSurname:     details.FamilyName,
+		ClientAddress:   ctx.RemoteIP().String(),
+	}
+
+	if len(details.Emails) != 0 {
+		s.UserEmail = details.Emails[0]
+	}
+
+	switch sp.Config.NameIDFormat {
+	case "unspecified":
+		s.NameID, s.NameIDFormat = details.Username, string(saml.UnspecifiedNameIDFormat)
+	default:
+		s.NameID, s.NameIDFormat = s.UserEmail, string(saml.EmailAddressNameIDFormat)
+	}
+
+	if level >= authentication.TwoFactor {
+		s.AuthnContextClassRef = samlRefedsMFA
+	}
+
+	s.CustomAttributes = samlAttributes(sp, details)
+
+	return s
+}
+
+// samlAttributes returns the attributes the service provider is configured to receive.
+func samlAttributes(sp *samlidp.ServiceProvider, details *authentication.UserDetailsExtended) (attributes []saml.Attribute) {
+	for _, name := range sp.Config.Attributes {
+		var values []string
+
+		switch name {
+		case "username":
+			values = []string{details.Username}
+		case "email":
+			values = details.Emails
+		case "name":
+			values = []string{details.DisplayName}
+		case "given_name":
+			values = []string{details.GivenName}
+		case "family_name":
+			values = []string{details.FamilyName}
+		case "groups":
+			values = details.Groups
+		}
+
+		attribute := saml.Attribute{Name: name, NameFormat: "urn:oasis:names:tc:SAML:2.0:attrname-format:basic"}
+
+		for _, value := range values {
+			if value != "" {
+				attribute.Values = append(attribute.Values, saml.AttributeValue{Type: "xs:string", Value: value})
+			}
+		}
+
+		if len(attribute.Values) != 0 {
+			attributes = append(attributes, attribute)
+		}
+	}
+
+	return attributes
+}
+
+// samlObserver logs the events of the identity provider.
+type samlObserver struct{}
+
+// Observe implements saml.Observer.
+func (samlObserver) Observe(_ context.Context, event saml.Event) {
+	entry := logging.Logger().WithFields(event.Fields())
+
+	if event.Err != nil {
+		entry.Error(fmt.Sprintf("SAML %s", event.String()))
+
+		return
+	}
+
+	entry.Debug(fmt.Sprintf("SAML %s", event.String()))
+}
+
+// resolveFlowResponseSAML continues a SAML flow after a login step: it resumes the request once the session satisfies
+// the authorization policy of the service provider, and asks for the second factor otherwise. It only reads the flow;
+// the single sign-on endpoint checks the session again when the request is resumed.
+func resolveFlowResponseSAML(ctx *middlewares.AutheliaCtx, userSession *session.UserSession, id string) flowResponse {
+	fields := map[string]any{logging.FieldFlowID: id, logging.FieldFlow: flowNameSAML, logging.FieldUsername: userSession.Username}
+
+	if userSession.IsAnonymous() || ctx.Providers.SAML == nil {
+		ctx.GetLogger().WithFields(fields).Error("Failed to continue the SAML flow as the user is anonymous or SAML is not configured")
+
+		return newFlowResponseFailure(messageAuthenticationFailed)
+	}
+
+	flow, err := ctx.Providers.StorageProvider.LoadSAMLFlow(ctx, id)
+	if err != nil {
+		ctx.GetLogger().WithError(err).WithFields(fields).Error("Error occurred loading the SAML flow")
+
+		return newFlowResponseFailure(messageAuthenticationFailed)
+	}
+
+	sp := ctx.Providers.SAML.ServiceProvider(flow.ServiceProvider)
+	if sp == nil {
+		ctx.GetLogger().WithFields(fields).Error("Failed to continue the SAML flow as its service provider is no longer registered")
+
+		return newFlowResponseFailure(messageAuthenticationFailed)
+	}
+
+	if !authorization.IsAuthLevelSufficient(userSession.AuthenticationLevel(ctx.Configuration.WebAuthn.EnablePasskey2FA), samlRequiredLevel(sp)) {
+		return newFlowResponseSecondFactor()
+	}
+
+	issuer, err := ctx.IssuerURL()
+	if err != nil {
+		ctx.GetLogger().WithError(err).WithFields(fields).Error("Error occurred determining the issuer")
+
+		return newFlowResponseFailure(messageAuthenticationFailed)
+	}
+
+	target := issuer.JoinPath(samlEndpointPathResume)
+
+	query := url.Values{}
+	query.Set(queryArgFlowID, id)
+	target.RawQuery = query.Encode()
+
+	return newFlowResponseRedirect(target.String())
+}

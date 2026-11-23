@@ -41,6 +41,26 @@ notifier:
   filesystem:
     filename: '${DIR}/notif.txt'
 identity_providers:
+  saml:
+    key: {{ secret "${DIR}/saml.key" | mindent 6 "|" | msquote }}
+    certificate_chain: {{ secret "${DIR}/saml.crt" | mindent 6 "|" | msquote }}
+    enable_keycloak_endpoints: true
+    service_providers:
+      - entity_id: 'https://sp1.example.com/saml/metadata'
+        assertion_consumer_service_urls: ['https://sp1.example.com/saml/acs']
+        authorization_policy: 'one_factor'
+        attributes: ['email', 'groups']
+      - entity_id: 'https://sp2.example.com/saml/metadata'
+        assertion_consumer_service_urls: ['https://sp2.example.com/saml/acs']
+        authorization_policy: 'two_factor'
+      - entity_id: 'https://sp3.example.com/saml/metadata'
+        assertion_consumer_service_urls: ['https://sp3.example.com/saml/acs']
+        authorization_policy: 'one_factor'
+        certificate: {{ secret "${DIR}/sp.crt" | mindent 10 "|" | msquote }}
+      - entity_id: 'https://sp4.example.com/saml/metadata'
+        assertion_consumer_service_urls: ['https://sp4.example.com/saml/acs']
+        authorization_policy: 'one_factor'
+        groups: ['admins']
   oidc:
     hmac_secret: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
     jwks:

@@ -25,6 +25,7 @@ import (
 	"github.com/authelia/authelia/v4/internal/oidc"
 	"github.com/authelia/authelia/v4/internal/random"
 	"github.com/authelia/authelia/v4/internal/regulation"
+	"github.com/authelia/authelia/v4/internal/samlidp"
 	"github.com/authelia/authelia/v4/internal/storage"
 	"github.com/authelia/authelia/v4/internal/templates"
 	"github.com/authelia/authelia/v4/internal/totp"
@@ -67,6 +68,11 @@ func NewProviders(config *schema.Configuration, caCertPool *x509.CertPool) (prov
 	providers.TOTP = totp.NewTimeBasedProvider(config.TOTP)
 	providers.UserAttributeResolver = expression.NewUserAttributes(config)
 	providers.UserProvider = NewAuthenticationProvider(config, caCertPool, providers.StorageProvider)
+
+	if providers.SAML, err = samlidp.New(config.IdentityProviders.SAML); err != nil {
+		errs = append(errs, err)
+	}
+
 	providers.Duo = duo.New(config)
 
 	switch {

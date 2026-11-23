@@ -177,6 +177,21 @@ func (mr *MockStorageMockRecorder) ConsumeRecoveryCode(ctx, id, ip any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConsumeRecoveryCode", reflect.TypeOf((*MockStorage)(nil).ConsumeRecoveryCode), ctx, id, ip)
 }
 
+// ConsumeSAMLFlow mocks base method.
+func (m *MockStorage) ConsumeSAMLFlow(ctx context.Context, flowID string) (*model.SAMLFlow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConsumeSAMLFlow", ctx, flowID)
+	ret0, _ := ret[0].(*model.SAMLFlow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConsumeSAMLFlow indicates an expected call of ConsumeSAMLFlow.
+func (mr *MockStorageMockRecorder) ConsumeSAMLFlow(ctx, flowID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConsumeSAMLFlow", reflect.TypeOf((*MockStorage)(nil).ConsumeSAMLFlow), ctx, flowID)
+}
+
 // CountUnusedRecoveryCodesByUsername mocks base method.
 func (m *MockStorage) CountUnusedRecoveryCodesByUsername(ctx context.Context, username string) (int, error) {
 	m.ctrl.T.Helper()
@@ -1076,6 +1091,21 @@ func (mr *MockStorageMockRecorder) LoadRegulationRecordsByUser(ctx, username, si
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadRegulationRecordsByUser", reflect.TypeOf((*MockStorage)(nil).LoadRegulationRecordsByUser), ctx, username, since, limit)
 }
 
+// LoadSAMLFlow mocks base method.
+func (m *MockStorage) LoadSAMLFlow(ctx context.Context, flowID string) (*model.SAMLFlow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LoadSAMLFlow", ctx, flowID)
+	ret0, _ := ret[0].(*model.SAMLFlow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// LoadSAMLFlow indicates an expected call of LoadSAMLFlow.
+func (mr *MockStorageMockRecorder) LoadSAMLFlow(ctx, flowID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadSAMLFlow", reflect.TypeOf((*MockStorage)(nil).LoadSAMLFlow), ctx, flowID)
+}
+
 // LoadTOTPConfiguration mocks base method.
 func (m *MockStorage) LoadTOTPConfiguration(ctx context.Context, username string) (*model.TOTPConfiguration, error) {
 	m.ctrl.T.Helper()
@@ -1707,6 +1737,20 @@ func (m *MockStorage) SaveRecoveryCode(ctx context.Context, code *model.Recovery
 func (mr *MockStorageMockRecorder) SaveRecoveryCode(ctx, code any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveRecoveryCode", reflect.TypeOf((*MockStorage)(nil).SaveRecoveryCode), ctx, code)
+}
+
+// SaveSAMLFlow mocks base method.
+func (m *MockStorage) SaveSAMLFlow(ctx context.Context, flow model.SAMLFlow) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SaveSAMLFlow", ctx, flow)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SaveSAMLFlow indicates an expected call of SaveSAMLFlow.
+func (mr *MockStorageMockRecorder) SaveSAMLFlow(ctx, flow any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveSAMLFlow", reflect.TypeOf((*MockStorage)(nil).SaveSAMLFlow), ctx, flow)
 }
 
 // SaveTOTPConfiguration mocks base method.

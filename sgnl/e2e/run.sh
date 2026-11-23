@@ -13,6 +13,11 @@ trap 'kill "${pid:-0}" 2>/dev/null || true; [ -n "${E2E_KEEP:-}" ] && cp "${dir}
 
 go build -o "${dir}/authelia" ./cmd/authelia
 openssl genrsa -out "${dir}/jwk.pem" 2048 2>/dev/null
+for name in saml sp; do
+  openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=${name}.example.com" \
+    -keyout "${dir}/${name}.key" -out "${dir}/${name}.crt" 2> /dev/null
+done
+go build -o "${dir}/samlsp" ./sgnl/e2e/samlsp
 sed "s|\${DIR}|${dir}|g" "${here}/configuration.yml.tmpl" > "${dir}/configuration.yml"
 
 export X_AUTHELIA_CONFIG_FILTERS=template PYTHONDONTWRITEBYTECODE=1 E2E_DIR="${dir}"

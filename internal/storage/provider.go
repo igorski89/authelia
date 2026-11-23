@@ -139,6 +139,15 @@ type Provider interface {
 	// yet, used or not, and its pending one-time codes, or only the identity verification links of the given action.
 	RevokeIdentityVerificationsByUsername(ctx context.Context, username, action string) (revoked int64, err error)
 
+	// SaveSAMLFlow saves a SAML authentication request which waits for the user to log in.
+	SaveSAMLFlow(ctx context.Context, flow model.SAMLFlow) (err error)
+
+	// LoadSAMLFlow loads a SAML flow which was neither used nor expired, without using it.
+	LoadSAMLFlow(ctx context.Context, flowID string) (flow *model.SAMLFlow, err error)
+
+	// ConsumeSAMLFlow uses a SAML flow which was neither used nor expired and returns it. A flow can be used once.
+	ConsumeSAMLFlow(ctx context.Context, flowID string) (flow *model.SAMLFlow, err error)
+
 	// AppendAdministrationAudit records a change made through the administration API or the users and groups commands.
 	AppendAdministrationAudit(ctx context.Context, entry model.AdministrationAuditEntry) (err error)
 

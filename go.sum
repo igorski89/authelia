@@ -2,6 +2,8 @@ authelia.com/provider/jose v0.2.1 h1:qL9ySHYQbxUwxzur0ISuNzzdWoCzhHi8NqCyE2YpxM4
 authelia.com/provider/jose v0.2.1/go.mod h1:xDYHQF6hQu15fpyl2BoPpOtjiBOoVJSwErjd5Rdqi1g=
 authelia.com/provider/oauth2 v0.4.5 h1:b8ENjM/fA/NWzCL6VMXuGHxI2s955ljJARHgOxmMbY4=
 authelia.com/provider/oauth2 v0.4.5/go.mod h1:PZd6MRCtfUYcGm2U2yPbrZ7RLPxmzv4k9JP0r/mkq1c=
+authelia.com/provider/saml v0.0.0-20261122133526-b4f25e2888ed h1:fsGNY2pKLWCKOwTGo9VpQP0VXoJxh+W0mttlk5aGD44=
+authelia.com/provider/saml v0.0.0-20261122133526-b4f25e2888ed/go.mod h1:8MTpG0RxCiHvqupqvT5YbnYJ4gVoDHbwr9PocDALJ/U=
 cel.dev/cel-go v0.33.4 h1:9hd5BRPQZwj81qOddEXh0WhE1N3shkG3ad89pSqk+iU=
 cel.dev/cel-go v0.33.4/go.mod h1:DnVip7tpJSsgZymwfT+m1tnEVy3ivAjSMXPx12YrMkU=
 cel.dev/expr v0.25.1 h1:1KrZg61W6TWSxuNZ37Xy49ps13NUovb66QLprthtwi4=
@@ -20,6 +22,8 @@ github.com/authelia/jsonschema v0.1.7 h1:RbtTeTG7GiWIrx2A+3O+b33jr/mLlSmqGYyk1w5
 github.com/authelia/jsonschema v0.1.7/go.mod h1:9l5WAhb73MyveI+xnNGK2Q367ynzLRAYHrN/PPcxptM=
 github.com/authelia/otp v1.0.4 h1:wVCsa9Tm/Vnx53WtaQbqgkNB9eUXQNnuaG0QzuRuHWI=
 github.com/authelia/otp v1.0.4/go.mod h1:2WLyl2ViklCj7UpFVfuqVFYnBi421+dMNavGV0mAndU=
+github.com/beevik/etree v1.8.1 h1:MchsAnqPGCGsfQezhwcouHPlAHlcAOqWpyCVZoyWfjU=
+github.com/beevik/etree v1.8.1/go.mod h1:bh4zJxiIr62SOf9pRzN7UUYaEDa9HEKafK25+sLc0Gc=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/boombuler/barcode v1.1.0 h1:ChaYjBR63fr4LFyGn8E8nt7dBSt3MiU3zMOZqFvVkHo=

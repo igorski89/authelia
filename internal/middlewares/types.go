@@ -25,6 +25,7 @@ import (
 	"github.com/authelia/authelia/v4/internal/oidc"
 	"github.com/authelia/authelia/v4/internal/random"
 	"github.com/authelia/authelia/v4/internal/regulation"
+	"github.com/authelia/authelia/v4/internal/samlidp"
 	"github.com/authelia/authelia/v4/internal/session"
 	"github.com/authelia/authelia/v4/internal/storage"
 	"github.com/authelia/authelia/v4/internal/templates"
@@ -53,6 +54,7 @@ type Providers struct {
 	SessionRepository     session.Repository
 	Regulator             *regulation.Regulator
 	OpenIDConnect         *oidc.OpenIDConnectProvider
+	SAML                  *samlidp.Provider
 	ExternalIdentity      *identity.Providers
 	Metrics               metrics.Provider
 	NTP                   *ntp.Provider
