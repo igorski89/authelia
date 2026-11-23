@@ -236,43 +236,48 @@ func (s *Service) ListUsers(ctx context.Context, limit, page int) (users []User,
 	return users, nil
 }
 
-// UpdateUser changes the profile of a user, and disables or enables it.
+// UpdateUser changes the profile of a user, and disables or enables it. The user is read and changed in one
+// transaction, so concurrent updates of different fields don't undo each other.
 func (s *Service) UpdateUser(ctx context.Context, username string, changes UserChanges) (user *User, err error) {
-	var current *User
-
-	if current, err = s.GetUser(ctx, username); err != nil {
-		return nil, err
-	}
-
-	email, displayName, givenName, familyName := current.Email, current.DisplayName, current.GivenName, current.FamilyName
-
-	if changes.Email != nil {
-		email = model.CanonicalAuthenticationUsername(*changes.Email)
-	}
-
-	if changes.DisplayName != nil {
-		displayName = strings.TrimSpace(*changes.DisplayName)
-	}
-
-	if changes.GivenName != nil {
-		givenName = strings.TrimSpace(*changes.GivenName)
-	}
-
-	if changes.FamilyName != nil {
-		familyName = strings.TrimSpace(*changes.FamilyName)
-	}
-
-	if err = validateProfile(email, displayName, givenName, familyName); err != nil {
-		return nil, err
-	}
+	var canonical string
 
 	err = s.transaction(ctx, func(ctx context.Context) (err error) {
-		if err = s.store.UpdateAuthenticationUserProfile(ctx, current.Username, email, displayName, givenName, familyName); err != nil {
+		var current *model.AuthenticationUser
+
+		if current, err = s.store.LoadAuthenticationUser(ctx, username); err != nil {
+			return err
+		}
+
+		canonical = current.Username
+
+		email, displayName, givenName, familyName := current.Email, current.DisplayName, current.GivenName, current.FamilyName
+
+		if changes.Email != nil {
+			email = model.CanonicalAuthenticationUsername(*changes.Email)
+		}
+
+		if changes.DisplayName != nil {
+			displayName = strings.TrimSpace(*changes.DisplayName)
+		}
+
+		if changes.GivenName != nil {
+			givenName = strings.TrimSpace(*changes.GivenName)
+		}
+
+		if changes.FamilyName != nil {
+			familyName = strings.TrimSpace(*changes.FamilyName)
+		}
+
+		if err = validateProfile(email, displayName, givenName, familyName); err != nil {
+			return err
+		}
+
+		if err = s.store.UpdateAuthenticationUserProfile(ctx, canonical, email, displayName, givenName, familyName); err != nil {
 			return err
 		}
 
 		if changes.Disabled != nil && *changes.Disabled != current.Disabled {
-			return s.store.UpdateAuthenticationUserDisabled(ctx, current.Username, *changes.Disabled)
+			return s.store.UpdateAuthenticationUserDisabled(ctx, canonical, *changes.Disabled)
 		}
 
 		return nil
@@ -281,7 +286,7 @@ func (s *Service) UpdateUser(ctx context.Context, username string, changes UserC
 		return nil, wrap(err)
 	}
 
-	return s.GetUser(ctx, current.Username)
+	return s.GetUser(ctx, canonical)
 }
 
 // SetPassword sets the password of a user. An empty Password removes it, so the user can only log in another way.
@@ -369,7 +374,7 @@ func (s *Service) ListGroups(ctx context.Context) (groups []Group, err error) {
 	groups = make([]Group, len(rows))
 
 	for i, row := range rows {
-		groups[i] = Group{Name: row.Name, CreatedAt: row.CreatedAt}
+		groups[i] = Group{Name: row.Name, CreatedAt: row.CreatedAt.UTC()}
 	}
 
 	return groups, nil
@@ -439,6 +444,13 @@ func (s *Service) digest(password Password) (digest sql.NullString, err error) {
 			return digest, fmt.Errorf("%w: the password digest is not a supported PHC string: %w", ErrInvalid, err)
 		}
 
+		// The plaintext and base64 schemes would store the password itself and skip the password policy.
+		for _, prefix := range []string{"$plaintext$", "$base64$"} {
+			if strings.HasPrefix(password.Digest, prefix) {
+				return digest, fmt.Errorf("%w: the password digest must be a hash such as argon2id, scrypt, pbkdf2, bcrypt, or sha2crypt, not a stored password", ErrInvalid)
+			}
+		}
+
 		return sql.NullString{String: password.Digest, Valid: true}, nil
 	default:
 		return digest, nil
@@ -460,8 +472,8 @@ func newUser(row *model.AuthenticationUser) *User {
 		Groups:      groups,
 		Disabled:    row.Disabled,
 		HasPassword: row.HasPassword(),
-		CreatedAt:   row.CreatedAt,
-		UpdatedAt:   row.UpdatedAt,
+		CreatedAt:   row.CreatedAt.UTC(),
+		UpdatedAt:   row.UpdatedAt.UTC(),
 	}
 }
 

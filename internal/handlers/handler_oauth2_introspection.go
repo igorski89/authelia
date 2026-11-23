@@ -5,6 +5,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 
@@ -12,6 +13,7 @@ import (
 
 	oauthelia2 "authelia.com/provider/oauth2"
 
+	"github.com/authelia/authelia/v4/internal/authentication"
 	"github.com/authelia/authelia/v4/internal/middlewares"
 	"github.com/authelia/authelia/v4/internal/oidc"
 )
@@ -75,9 +77,39 @@ func OAuth2IntrospectionPOST(ctx *middlewares.AutheliaCtx, rw http.ResponseWrite
 		ctx.GetLogger().Tracef("Introspection Request with id '%s' yielded a %s (active: %t)", requestID, responder.GetTokenUse(), responder.IsActive())
 	}
 
+	handleOAuth2IntrospectionUserPermitted(ctx, requestID, responder)
+
 	if responder.IsActive() {
 		ctx.SetUserValue(middlewares.UserValueRateLimitExempt, true)
 	}
 
 	ctx.Providers.OpenIDConnect.WriteIntrospectionResponse(ctx, rw, responder)
+}
+
+// handleOAuth2IntrospectionUserPermitted reports an otherwise active token as inactive when the user it was issued to
+// has since been deleted or disabled. Only the user provider reporting the user as not found does this; any other
+// error is logged and the token stays active, so a transient failure doesn't revoke every token at once.
+func handleOAuth2IntrospectionUserPermitted(ctx *middlewares.AutheliaCtx, requestID uuid.UUID, responder oauthelia2.IntrospectionResponder) {
+	response, ok := responder.(*oauthelia2.IntrospectionResponse)
+	if !ok || !response.IsActive() || response.GetAccessRequester() == nil {
+		return
+	}
+
+	session, ok := response.GetAccessRequester().GetSession().(*oidc.Session)
+	if !ok || session.ClientCredentials || len(session.Subject) == 0 {
+		return
+	}
+
+	_, err := oidc.UserDetailerFromSubjectString(ctx, session.Subject)
+
+	switch {
+	case err == nil:
+		return
+	case errors.Is(err, authentication.ErrUserNotFound):
+		ctx.GetLogger().WithField("subject", session.Subject).Infof("Introspection Request with id '%s' yielded an inactive token as the user it was issued to is no longer permitted to log in", requestID)
+
+		response.Active = false
+	default:
+		ctx.GetLogger().WithError(err).WithField("subject", session.Subject).Errorf("Introspection Request with id '%s' could not check the user the token was issued to", requestID)
+	}
 }

@@ -40,6 +40,10 @@ identity_providers:
     hmac_secret: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
     jwks:
       - key: {{ secret "${DIR}/jwk.pem" | mindent 10 "|" | msquote }}
+    lifespans:
+      custom:
+        short:
+          access_token: '2s'
     claims_policies:
       app_groups:
         id_token: ['email', 'email_verified', 'name', 'preferred_username', 'groups']
@@ -70,4 +74,22 @@ identity_providers:
         audience: ['https://id.example.com/realms/test/api/admin']
         token_endpoint_auth_method: 'client_secret_basic'
         authorization_policy: 'one_factor'
+      - client_id: 'other'
+        client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
+        grant_types: ['client_credentials']
+        response_types: []
+        redirect_uris: []
+        scopes: ['some.api']
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'one_factor'
+      - client_id: 'agent-short'
+        client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
+        grant_types: ['client_credentials']
+        response_types: []
+        redirect_uris: []
+        scopes: ['authelia.admin.read']
+        audience: ['https://id.example.com/realms/test/api/admin']
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'one_factor'
+        lifespan: 'short'
 ...

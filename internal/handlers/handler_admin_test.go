@@ -397,9 +397,9 @@ func TestAdminUsersAndGroupsHandlers(t *testing.T) {
 	}
 
 	steps := []step{
-		{"ShouldCreateGroup", AdminGroupsPOST(service), nil, "", `{"name":"sgnl_users"}`, "", http.StatusCreated, `"name":"sgnl_users"`},
-		{"ShouldRefuseDuplicateGroup", AdminGroupsPOST(service), nil, "", `{"name":"sgnl_users"}`, "", http.StatusConflict, `"error":"conflict"`},
-		{"ShouldCreateUser", AdminUsersPOST(service), nil, "", `{"username":"Jane.Doe","email":"jane@example.com","groups":["sgnl_users"],"password":"a-long-password"}`, "", http.StatusCreated, `"username":"jane.doe"`},
+		{"ShouldCreateGroup", AdminGroupsPOST(service), nil, "", `{"name":"staff"}`, "", http.StatusCreated, `"name":"staff"`},
+		{"ShouldRefuseDuplicateGroup", AdminGroupsPOST(service), nil, "", `{"name":"staff"}`, "", http.StatusConflict, `"error":"conflict"`},
+		{"ShouldCreateUser", AdminUsersPOST(service), nil, "", `{"username":"Jane.Doe","email":"jane@example.com","groups":["staff"],"password":"a-long-password"}`, "", http.StatusCreated, `"username":"jane.doe"`},
 		{"ShouldCreateUserWithAt", AdminUsersPOST(service), nil, "", `{"username":"ops@example.org","email":"ops@example.org"}`, "", http.StatusCreated, `"has_password":false`},
 		{"ShouldNotExposeDigest", AdminUserGET(service), map[string]string{"username": "jane.doe"}, "", "", "", http.StatusOK, `"has_password":true`},
 		{"ShouldDecodeEscapedUsername", AdminUserGET(service), map[string]string{"username": "ops%40example.org"}, "", "", "", http.StatusOK, `"username":"ops@example.org"`},
@@ -407,19 +407,20 @@ func TestAdminUsersAndGroupsHandlers(t *testing.T) {
 		{"ShouldRefuseWrongContentType", AdminUserPATCH(service), map[string]string{"username": "jane.doe"}, "", `{"display_name":"x"}`, "text/plain", http.StatusBadRequest, `content type`},
 		{"ShouldAcceptContentTypeWithCharset", AdminUserPATCH(service), map[string]string{"username": "jane.doe"}, "", `{"display_name":"Jane","disabled":true}`, "application/json; charset=utf-8", http.StatusOK, `"disabled":true`},
 		{"ShouldRefuseEmptyPassword", AdminUserPasswordPUT(service), map[string]string{"username": "jane.doe"}, "", `{}`, "", http.StatusBadRequest, `use DELETE`},
-		{"ShouldSetPasswordDigest", AdminUserPasswordPUT(service), map[string]string{"username": "ops@example.org"}, "", `{"password_digest":"$plaintext$password"}`, "", http.StatusNoContent, ``},
+		{"ShouldRefusePlaintextDigest", AdminUserPasswordPUT(service), map[string]string{"username": "ops@example.org"}, "", `{"password_digest":"$plaintext$password"}`, "", http.StatusBadRequest, `not a stored password`},
+		{"ShouldSetPasswordDigest", AdminUserPasswordPUT(service), map[string]string{"username": "ops@example.org"}, "", `{"password_digest":"$argon2id$v=19$m=64,t=1,p=1$2eqfZS5ZCxmK+sWyv5rauw$qsDFAfTl8ByCIrMMzbU6o1IVe8Ea23YCGph3rqWeIw4"}`, "", http.StatusNoContent, ``},
 		{"ShouldRemovePassword", AdminUserPasswordDELETE(service), map[string]string{"username": "jane.doe"}, "", "", "", http.StatusNoContent, ``},
-		{"ShouldAddToGroup", AdminUserGroupPUT(service), map[string]string{"username": "ops@example.org", "group": "sgnl_users"}, "", "", "", http.StatusNoContent, ``},
+		{"ShouldAddToGroup", AdminUserGroupPUT(service), map[string]string{"username": "ops@example.org", "group": "staff"}, "", "", "", http.StatusNoContent, ``},
 		{"ShouldRefuseMissingGroup", AdminUserGroupPUT(service), map[string]string{"username": "ops@example.org", "group": "missing"}, "", "", "", http.StatusNotFound, `"error":"not_found"`},
-		{"ShouldListMembers", AdminGroupMembersGET(service), map[string]string{"group": "sgnl_users"}, "", "", "", http.StatusOK, `{"members":["jane.doe","ops@example.org"]}`},
-		{"ShouldRemoveFromGroup", AdminUserGroupDELETE(service), map[string]string{"username": "ops@example.org", "group": "sgnl_users"}, "", "", "", http.StatusNoContent, ``},
+		{"ShouldListMembers", AdminGroupMembersGET(service), map[string]string{"group": "staff"}, "", "", "", http.StatusOK, `{"members":["jane.doe","ops@example.org"]}`},
+		{"ShouldRemoveFromGroup", AdminUserGroupDELETE(service), map[string]string{"username": "ops@example.org", "group": "staff"}, "", "", "", http.StatusNoContent, ``},
 		{"ShouldListUsers", AdminUsersGET(service), nil, "limit=1&page=1", "", "", http.StatusOK, `"users":[{"username":"ops@example.org"`},
 		{"ShouldRefuseBadLimit", AdminUsersGET(service), nil, "limit=abc", "", "", http.StatusBadRequest, `must be an integer`},
-		{"ShouldListGroups", AdminGroupsGET(service), nil, "", "", "", http.StatusOK, `"name":"sgnl_users"`},
+		{"ShouldListGroups", AdminGroupsGET(service), nil, "", "", "", http.StatusOK, `"name":"staff"`},
 		{"ShouldDeleteUser", AdminUserDELETE(service), map[string]string{"username": "jane.doe"}, "", "", "", http.StatusNoContent, ``},
 		{"ShouldNotFindDeletedUser", AdminUserGET(service), map[string]string{"username": "jane.doe"}, "", "", "", http.StatusNotFound, `"error":"not_found"`},
 		{"ShouldRefuseDeletedUsername", AdminUsersPOST(service), nil, "", `{"username":"jane.doe","email":"jane2@example.com"}`, "", http.StatusConflict, `deleted user`},
-		{"ShouldDeleteGroup", AdminGroupDELETE(service), map[string]string{"group": "sgnl_users"}, "", "", "", http.StatusNoContent, ``},
+		{"ShouldDeleteGroup", AdminGroupDELETE(service), map[string]string{"group": "staff"}, "", "", "", http.StatusNoContent, ``},
 		{"ShouldWhoAmI", AdminWhoAmIGET, nil, "", "", "", http.StatusOK, `"client_id":""`},
 	}
 
@@ -452,7 +453,7 @@ func TestAdminUsersAndGroupsHandlers(t *testing.T) {
 			assert.Equal(t, st.status, mock.Ctx.Response.StatusCode(), string(mock.Ctx.Response.Body()))
 			assert.Contains(t, string(mock.Ctx.Response.Body()), st.contain)
 			assert.NotContains(t, string(mock.Ctx.Response.Body()), "$argon2")
-			assert.NotContains(t, string(mock.Ctx.Response.Body()), "$plaintext")
+			assert.NotContains(t, string(mock.Ctx.Response.Body()), "qsDFAfTl8ByCIrMMzbU6o1IVe8Ea23YCGph3rqWeIw4")
 		})
 	}
 }

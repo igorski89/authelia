@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-import json, base64, http.client, urllib.parse
+import json, base64, http.client, urllib.parse, time
 BASE='/realms/test'; ISS='https://id.example.com/realms/test'
 H={'X-Forwarded-Proto':'https','X-Forwarded-Host':'id.example.com','Host':'id.example.com'}
 KC='$argon2id$v=19$m=7168,t=5,p=1$dk016MYDrSYOe3uI8Hj8Hg$JkADnvsSGzIE22w4StMki1156N6zJRBSoOA2GZ/j17s'
@@ -28,8 +28,8 @@ api=Client()
 st,_,b=api.req('POST','/api/oidc/token',{'grant_type':'client_credentials','scope':'authelia.admin.read authelia.admin.write','audience':ISS+'/api/admin'},basic('agent'),form=True)
 at=json.loads(b)['access_token']; A={'Authorization':'Bearer '+at}
 check('agent gets a client-credentials token', st==200)
-st,_,b=api.req('POST','/api/admin/groups',{'name':'sgnl_users'},A); check('agent creates group', st in (201,409), b)
-st,_,b=api.req('POST','/api/admin/users',{'username':'KC.User','email':'KC.User@Example.com','display_name':'KC User','given_name':'KC','family_name':'User','groups':['sgnl_users'],'password_digest':KC},A)
+st,_,b=api.req('POST','/api/admin/groups',{'name':'staff'},A); check('agent creates group', st in (201,409), b)
+st,_,b=api.req('POST','/api/admin/users',{'username':'KC.User','email':'KC.User@Example.com','display_name':'KC User','given_name':'KC','family_name':'User','groups':['staff'],'password_digest':KC},A)
 check('agent imports user with Keycloak argon2id digest', st==201, b)
 u=Client()
 st,_,b=u.req('POST','/api/firstfactor',{'username':'kc.user@example.com','password':'test-pass-123'})
@@ -43,10 +43,14 @@ if 'flow_id=' in loc:
 code=urllib.parse.parse_qs(urllib.parse.urlparse(loc).query)['code'][0]
 st,_,b=u.req('POST','/api/oidc/token',{'grant_type':'authorization_code','code':code,'redirect_uri':'https://app.example.com/cb'},basic('app'),form=True)
 t=json.loads(b); idt=claims(t['id_token'])
-check('ID token carries groups, email, name, preferred_username', idt.get('groups')==['sgnl_users'] and idt.get('email')=='kc.user@example.com' and idt.get('name')=='KC User' and idt.get('preferred_username')=='kc.user', json.dumps(idt))
+check('ID token carries groups, email, name, preferred_username', idt.get('groups')==['staff'] and idt.get('email')=='kc.user@example.com' and idt.get('name')=='KC User' and idt.get('preferred_username')=='kc.user', json.dumps(idt))
 check('ID token issuer is the realm path', idt.get('iss')==ISS, idt.get('iss'))
 check('access token is a JWT (OpenCloud-style clients)', t['access_token'].count('.')==2)
+st,_,b=u.req('POST','/api/oidc/introspection',{'token':t['access_token']},basic('app'),form=True)
+check('introspection reports the access token active', st==200 and json.loads(b).get('active') is True, b[:120])
 st,_,b=api.req('PATCH','/api/admin/users/kc.user',{'disabled':True},A); check('agent disables user', st==200, b)
+st,_,b=u.req('POST','/api/oidc/introspection',{'token':t['access_token']},basic('app'),form=True)
+check('introspection reports the access token inactive for a disabled user', st==200 and json.loads(b).get('active') is False, b[:160])
 st,_,b=u.req('POST','/api/oidc/token',{'grant_type':'refresh_token','refresh_token':t['refresh_token']},basic('app'),form=True)
 check('refresh token refused for disabled user', st==400 and 'invalid_grant' in b, b[:120])
 st,_,b=api.req('PATCH','/api/admin/users/kc.user',{'disabled':False},A)
@@ -59,4 +63,12 @@ st,_,b=api.req('POST','/api/admin/users',{'username':'kc.user','email':'other@ex
 st,_,b=api.req('GET','/api/admin/users',None,{'Authorization':'Bearer '+t['access_token']}); check('user token refused by admin API', st in (401,403), b[:100])
 st,_,b=api.req('GET','/api/admin/users',None,{}); check('session-less request refused', st==401)
 st,_,b=u.req('GET','/api/admin/users'); check('browser session refused by admin API', st==401)
+st,_,b=api.req('POST','/api/oidc/token',{'grant_type':'client_credentials','scope':'some.api'},basic('other'),form=True)
+st,_,b=api.req('GET','/api/admin/whoami',None,{'Authorization':'Bearer '+json.loads(b)['access_token']})
+check('client without an admin scope refused', st==403 and 'insufficient_scope' in b, b[:100])
+st,_,b=api.req('POST','/api/oidc/token',{'grant_type':'client_credentials','scope':'authelia.admin.read','audience':ISS+'/api/admin'},basic('agent-short'),form=True)
+short={'Authorization':'Bearer '+json.loads(b)['access_token']}
+st,_,b=api.req('GET','/api/admin/whoami',None,short); check('short-lived token accepted before expiry', st==200, b[:100])
+time.sleep(3)
+st,_,b=api.req('GET','/api/admin/whoami',None,short); check('expired token refused', st==401 and 'invalid_token' in b, b[:100])
 print(f'{sum(results)}/{len(results)} passed')

@@ -192,3 +192,46 @@ func TestOpenIDConnectUserinfoRefusesUserNoLongerPermitted(t *testing.T) {
 	assert.Contains(t, rw.Body.String(), "no longer permitted to log in")
 	assert.NotContains(t, rw.Body.String(), subject.String())
 }
+
+func TestHandleOAuth2IntrospectionUserPermitted(t *testing.T) {
+	subject := uuid.MustParse("058606a9-18ed-4dd5-a979-1a647f2ba62f")
+
+	newResponse := func(session *oidc.Session) *oauthelia2.IntrospectionResponse {
+		return &oauthelia2.IntrospectionResponse{Active: true, AccessRequester: &oauthelia2.AccessRequest{Request: oauthelia2.Request{Session: session}}}
+	}
+
+	testCases := []struct {
+		name     string
+		response *oauthelia2.IntrospectionResponse
+		err      error
+		active   bool
+	}{
+		{"ShouldKeepActiveUser", newResponse(&oidc.Session{DefaultSession: &openid.DefaultSession{Subject: subject.String()}}), nil, true},
+		{"ShouldDeactivateUserNoLongerPermitted", newResponse(&oidc.Session{DefaultSession: &openid.DefaultSession{Subject: subject.String()}}), authentication.ErrUserNotFound, false},
+		{"ShouldKeepActiveOnTransientError", newResponse(&oidc.Session{DefaultSession: &openid.DefaultSession{Subject: subject.String()}}), errors.New("database is locked"), true},
+		{"ShouldSkipClientCredentials", newResponse(&oidc.Session{ClientCredentials: true, DefaultSession: &openid.DefaultSession{Subject: "client"}}), nil, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := mocks.NewMockAutheliaCtx(t)
+			defer mock.Close()
+
+			setupTestOIDCProvider(t, mock, nil)
+
+			if !tc.response.GetAccessRequester().GetSession().(*oidc.Session).ClientCredentials {
+				mock.StorageMock.EXPECT().LoadUserOpaqueIdentifier(gomock.Any(), subject).Return(&model.UserOpaqueIdentifier{Username: "john"}, nil)
+
+				if tc.err != nil {
+					mock.UserProviderMock.EXPECT().GetDetailsExtended("john").Return(nil, tc.err)
+				} else {
+					mock.UserProviderMock.EXPECT().GetDetailsExtended("john").Return(&authentication.UserDetailsExtended{UserDetails: &authentication.UserDetails{Username: "john"}}, nil)
+				}
+			}
+
+			handleOAuth2IntrospectionUserPermitted(mock.Ctx, uuid.New(), tc.response)
+
+			assert.Equal(t, tc.active, tc.response.IsActive())
+		})
+	}
+}

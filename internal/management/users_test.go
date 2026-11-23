@@ -118,6 +118,8 @@ func TestServiceUsers(t *testing.T) {
 			{"InvalidGroup", NewUser{Username: "a", Email: "a@example.com", Groups: []string{"no spaces"}}},
 			{"WeakPassword", NewUser{Username: "a", Email: "a@example.com", Password: Password{Plain: "short"}}},
 			{"BadDigest", NewUser{Username: "a", Email: "a@example.com", Password: Password{Digest: "plain-text"}}},
+			{"PlaintextDigest", NewUser{Username: "a", Email: "a@example.com", Password: Password{Digest: "$plaintext$a-long-password"}}},
+			{"Base64Digest", NewUser{Username: "a", Email: "a@example.com", Password: Password{Digest: "$base64$YS1sb25nLXBhc3N3b3Jk"}}},
 			{"BothPasswords", NewUser{Username: "a", Email: "a@example.com", Password: Password{Plain: "a-long-password", Digest: "$plaintext$x"}}},
 		}
 
