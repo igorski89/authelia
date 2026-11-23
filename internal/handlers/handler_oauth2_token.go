@@ -5,11 +5,13 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 
 	oauthelia2 "authelia.com/provider/oauth2"
 
+	"github.com/authelia/authelia/v4/internal/authentication"
 	"github.com/authelia/authelia/v4/internal/middlewares"
 	"github.com/authelia/authelia/v4/internal/oidc"
 )
@@ -84,6 +86,10 @@ func OAuth2TokenPOST(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, req *
 
 	ctx.GetLogger().Debugf("Access Request with id '%s' on client with id '%s' is being processed", requester.GetID(), client.GetID())
 
+	if handled := handleOAuth2TokenUserPermitted(ctx, rw, requester, client, requester.GetSession().(*oidc.Session)); handled {
+		return
+	}
+
 	if handled := handleOAuth2TokenHydration(ctx, rw, requester, client, requester.GetSession().(*oidc.Session)); handled {
 		return
 	}
@@ -103,6 +109,35 @@ func OAuth2TokenPOST(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, req *
 	ctx.GetLogger().Tracef("Access Request with id '%s' on client with id '%s' produced the following claims: %+v", requester.GetID(), client.GetID(), oidc.AccessResponderToClearMap(responder))
 
 	ctx.Providers.OpenIDConnect.WriteAccessResponse(ctx, rw, requester, responder)
+}
+
+// handleOAuth2TokenUserPermitted refuses to issue tokens on behalf of a user who has since been deleted or disabled, for
+// example when a refresh token is used after the user was disabled. Only the user provider reporting the user as not
+// found refuses the grant; any other error is reported as a server error so a transient failure doesn't look final.
+func handleOAuth2TokenUserPermitted(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, requester oauthelia2.AccessRequester, client oidc.Client, session *oidc.Session) (handled bool) {
+	if session.ClientCredentials || len(session.Subject) == 0 || requester.GetGrantTypes().ExactOne(oidc.GrantTypeClientCredentials) {
+		return false
+	}
+
+	_, err := oidc.UserDetailerFromSubjectString(ctx, session.Subject)
+
+	switch {
+	case err == nil:
+		return false
+	case errors.Is(err, authentication.ErrUserNotFound):
+		err = oauthelia2.ErrInvalidGrant.WithHint("The user the grant was issued to is no longer permitted to log in.")
+	default:
+		err = oauthelia2.ErrServerError.WithWrap(err).WithDebugf("Failed to check the user the grant was issued to: %v.", err)
+	}
+
+	ctx.GetLogger().
+		WithFields(map[string]any{"oauth2_access_request_id": requester.GetID(), "client_id": client.GetID(), "subject": session.Subject}).
+		WithError(oauthelia2.ErrorToDebugRFC6749Error(err)).
+		Error("Access Request was refused as the user it was issued to could not be confirmed")
+
+	ctx.Providers.OpenIDConnect.WriteAccessError(ctx, rw, requester, err)
+
+	return true
 }
 
 func handleOAuth2TokenHydration(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, requester oauthelia2.AccessRequester, client oidc.Client, session *oidc.Session) (handled bool) {

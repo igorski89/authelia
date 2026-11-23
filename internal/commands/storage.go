@@ -30,6 +30,23 @@ func newStorageCmd(ctx *CmdCtx) (cmd *cobra.Command) {
 		DisableAutoGenTag: true,
 	}
 
+	addStoragePersistentFlags(cmd)
+
+	cmd.AddCommand(
+		newStorageCacheCmd(ctx),
+		newStorageMigrateCmd(ctx),
+		newStorageSchemaInfoCmd(ctx),
+		newStorageEncryptionCmd(ctx),
+		newStorageUserCmd(ctx),
+		newStorageBansCmd(ctx),
+		newStorageLogsCmd(ctx),
+	)
+
+	return cmd
+}
+
+// addStoragePersistentFlags adds the flags which select and unlock the storage database.
+func addStoragePersistentFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().String(cmdFlagNameEncryptionKey, "", "the storage encryption key to use")
 
 	cmd.PersistentFlags().String(cmdFlagNameSQLite3Path, "", "the SQLite database path")
@@ -44,18 +61,6 @@ func newStorageCmd(ctx *CmdCtx) (cmd *cobra.Command) {
 	cmd.PersistentFlags().String(cmdFlagNamePostgreSQLSchema, "public", "the PostgreSQL schema name")
 	cmd.PersistentFlags().String(cmdFlagNamePostgreSQLUsername, "authelia", "the PostgreSQL username")
 	cmd.PersistentFlags().String(cmdFlagNamePostgreSQLPassword, "", "the PostgreSQL password")
-
-	cmd.AddCommand(
-		newStorageCacheCmd(ctx),
-		newStorageMigrateCmd(ctx),
-		newStorageSchemaInfoCmd(ctx),
-		newStorageEncryptionCmd(ctx),
-		newStorageUserCmd(ctx),
-		newStorageBansCmd(ctx),
-		newStorageLogsCmd(ctx),
-	)
-
-	return cmd
 }
 
 func newStorageCacheCmd(ctx *CmdCtx) (cmd *cobra.Command) {

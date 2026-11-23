@@ -6,6 +6,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -19,6 +20,7 @@ import (
 	"authelia.com/provider/oauth2/token/jwt"
 	"authelia.com/provider/oauth2/x/errorsx"
 
+	"github.com/authelia/authelia/v4/internal/authentication"
 	"github.com/authelia/authelia/v4/internal/middlewares"
 	"github.com/authelia/authelia/v4/internal/oidc"
 )
@@ -148,6 +150,14 @@ func OpenIDConnectUserinfo(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter,
 	if detailer, err = oidc.UserDetailerFromClaims(ctx, original); err != nil {
 		if userinfo {
 			ctx.GetLogger().WithError(err).Errorf("User Info Request with id '%s' on client with id '%s' error occurred loading user information", requestID, client.GetID())
+
+			// A user who has since been deleted or disabled gets no claims, rather than the claims from when the token
+			// was issued.
+			if errors.Is(err, authentication.ErrUserNotFound) {
+				errorsx.WriteRFC6750Error(rw, oauthelia2.ErrRequestUnauthorized.WithHint("The user the Access Token was issued to is no longer permitted to log in."), nil)
+
+				return
+			}
 		}
 
 		if err = client.GetClaimsStrategy().HydrateClientCredentialsUserInfoClaims(ctx, client, original, claims); err != nil {
