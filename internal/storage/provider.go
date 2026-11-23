@@ -80,6 +80,54 @@ type Provider interface {
 	DeleteExternalIdentityLink(ctx context.Context, username string, id int) (err error)
 
 	/*
+		Implementation for the Database Authentication Backend.
+	*/
+
+	// CreateAuthenticationUser creates a user of the database authentication backend.
+	CreateAuthenticationUser(ctx context.Context, user model.AuthenticationUser) (err error)
+
+	// LoadAuthenticationUser loads a user of the database authentication backend by username, with its groups.
+	LoadAuthenticationUser(ctx context.Context, username string) (user *model.AuthenticationUser, err error)
+
+	// LoadAuthenticationUserByEmail loads a user of the database authentication backend by email, with its groups.
+	LoadAuthenticationUserByEmail(ctx context.Context, email string) (user *model.AuthenticationUser, err error)
+
+	// LoadAuthenticationUsers loads a page of users of the database authentication backend ordered by username.
+	LoadAuthenticationUsers(ctx context.Context, limit, page int) (users []model.AuthenticationUser, err error)
+
+	// UpdateAuthenticationUserProfile updates the email and names of a user of the database authentication backend.
+	UpdateAuthenticationUserProfile(ctx context.Context, username, email, displayName, givenName, familyName string) (err error)
+
+	// UpdateAuthenticationUserPassword updates the password digest of a user of the database authentication backend.
+	UpdateAuthenticationUserPassword(ctx context.Context, username, digest string) (err error)
+
+	// UpdateAuthenticationUserDisabled disables or enables a user of the database authentication backend.
+	UpdateAuthenticationUserDisabled(ctx context.Context, username string, disabled bool) (err error)
+
+	// DeleteAuthenticationUser deletes a user of the database authentication backend and records the username as
+	// deleted so it is never used again.
+	DeleteAuthenticationUser(ctx context.Context, username string) (err error)
+
+	// CreateAuthenticationGroup creates a group of the database authentication backend.
+	CreateAuthenticationGroup(ctx context.Context, name string) (err error)
+
+	// LoadAuthenticationGroups loads every group of the database authentication backend.
+	LoadAuthenticationGroups(ctx context.Context) (groups []model.AuthenticationGroup, err error)
+
+	// LoadAuthenticationGroupMembers loads the usernames of the members of a group of the database authentication
+	// backend.
+	LoadAuthenticationGroupMembers(ctx context.Context, name string) (usernames []string, err error)
+
+	// DeleteAuthenticationGroup deletes a group of the database authentication backend and its memberships.
+	DeleteAuthenticationGroup(ctx context.Context, name string) (err error)
+
+	// AddAuthenticationUserGroup makes a user of the database authentication backend a member of a group.
+	AddAuthenticationUserGroup(ctx context.Context, username, group string) (err error)
+
+	// RemoveAuthenticationUserGroup removes a user of the database authentication backend from a group.
+	RemoveAuthenticationUserGroup(ctx context.Context, username, group string) (err error)
+
+	/*
 		Implementation for User TOTP Configurations.
 	*/
 

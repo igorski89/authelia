@@ -40,6 +40,8 @@ func (p *SQLProvider) SchemaEncryptionRotateHMACKey(ctx context.Context, name st
 		size, table, desc = sha256.BlockSize, tableSession, "sessions"
 	case hmacNameExternalIdentityLink:
 		return p.schemaEncryptionRotateHMACKeyExternalIdentityLink(ctx)
+	case hmacNameAuthenticationUser:
+		return p.schemaEncryptionRotateHMACKeyAuthenticationUser(ctx)
 	default:
 		return fmt.Errorf("unknown key name '%s'", name)
 	}
@@ -674,6 +676,7 @@ func (p *SQLProvider) getHMACOneTimePassword(ctx context.Context) (key []byte, e
 	return p.getHMACKey(ctx, hmacNameOneTimePassword, sha256.BlockSize)
 }
 
+//nolint:unparam // The key type is a parameter so other cryptography key types can be stored the same way.
 func (p *SQLProvider) setCrypographyKey(ctx context.Context, conn SQLXConnection, typ string, name string, size int, replace bool) (key []byte, err error) {
 	key = make([]byte, size)
 

@@ -173,6 +173,25 @@ func NewSQLProvider(config *schema.Configuration, name, driverName, dataSourceNa
 		sqlUpdateExternalIdentityLinkSignIn:          fmt.Sprintf(queryFmtUpdateExternalIdentityLinkSignIn, tableUserExternalIdentityLinks),
 		sqlDeleteExternalIdentityLinkByUsernameAndID: fmt.Sprintf(queryFmtDeleteExternalIdentityLinkByUsernameAndID, tableUserExternalIdentityLinks),
 
+		sqlInsertAuthenticationUser:                fmt.Sprintf(queryFmtInsertAuthenticationUser, tableAuthenticationUsers),
+		sqlSelectAuthenticationUserByUsername:      fmt.Sprintf(queryFmtSelectAuthenticationUserByUsername, tableAuthenticationUsers),
+		sqlSelectAuthenticationUserByEmail:         fmt.Sprintf(queryFmtSelectAuthenticationUserByEmail, tableAuthenticationUsers),
+		sqlSelectAuthenticationUsers:               fmt.Sprintf(queryFmtSelectAuthenticationUsers, tableAuthenticationUsers),
+		sqlUpdateAuthenticationUser:                fmt.Sprintf(queryFmtUpdateAuthenticationUser, tableAuthenticationUsers),
+		sqlDeleteAuthenticationUser:                fmt.Sprintf(queryFmtDeleteAuthenticationUser, tableAuthenticationUsers),
+		sqlInsertAuthenticationUserDeleted:         fmt.Sprintf(queryFmtInsertAuthenticationUserDeleted, tableAuthenticationUsersDeleted),
+		sqlSelectAuthenticationUserDeletedCount:    fmt.Sprintf(queryFmtSelectAuthenticationUserDeletedCount, tableAuthenticationUsersDeleted),
+		sqlInsertAuthenticationGroup:               fmt.Sprintf(queryFmtInsertAuthenticationGroup, tableAuthenticationGroups),
+		sqlSelectAuthenticationGroupByName:         fmt.Sprintf(queryFmtSelectAuthenticationGroupByName, tableAuthenticationGroups),
+		sqlSelectAuthenticationGroups:              fmt.Sprintf(queryFmtSelectAuthenticationGroups, tableAuthenticationGroups),
+		sqlDeleteAuthenticationGroup:               fmt.Sprintf(queryFmtDeleteAuthenticationGroup, tableAuthenticationGroups),
+		sqlInsertAuthenticationUserGroup:           fmt.Sprintf(queryFmtInsertAuthenticationUserGroup, tableAuthenticationUserGroups),
+		sqlDeleteAuthenticationUserGroup:           fmt.Sprintf(queryFmtDeleteAuthenticationUserGroup, tableAuthenticationUserGroups),
+		sqlDeleteAuthenticationUserGroupsByUserID:  fmt.Sprintf(queryFmtDeleteAuthenticationUserGroupsByUserID, tableAuthenticationUserGroups),
+		sqlDeleteAuthenticationUserGroupsByGroupID: fmt.Sprintf(queryFmtDeleteAuthenticationUserGroupsByGroupID, tableAuthenticationUserGroups),
+		sqlSelectAuthenticationUserGroupsByUserID:  fmt.Sprintf(queryFmtSelectAuthenticationUserGroupsByUserID, tableAuthenticationUserGroups, tableAuthenticationUsers, tableAuthenticationGroups),
+		sqlSelectAuthenticationUserGroupsByGroupID: fmt.Sprintf(queryFmtSelectAuthenticationUserGroupsByGroupID, tableAuthenticationUserGroups, tableAuthenticationUsers, tableAuthenticationGroups),
+
 		sqlInsertOAuth2BlacklistedJTI: fmt.Sprintf(queryFmtInsertOAuth2BlacklistedJTI, tableOAuth2BlacklistedJTI),
 		sqlInsertOAuth2RequestReplay:  fmt.Sprintf(queryFmtInsertOAuth2RequestReplay, tableOAuth2RequestReplay),
 
@@ -389,6 +408,25 @@ type SQLProvider struct {
 	sqlUpdateExternalIdentityLinkSignIn          string
 	sqlDeleteExternalIdentityLinkByUsernameAndID string
 
+	sqlInsertAuthenticationUser                string
+	sqlSelectAuthenticationUserByUsername      string
+	sqlSelectAuthenticationUserByEmail         string
+	sqlSelectAuthenticationUsers               string
+	sqlUpdateAuthenticationUser                string
+	sqlDeleteAuthenticationUser                string
+	sqlInsertAuthenticationUserDeleted         string
+	sqlSelectAuthenticationUserDeletedCount    string
+	sqlInsertAuthenticationGroup               string
+	sqlSelectAuthenticationGroupByName         string
+	sqlSelectAuthenticationGroups              string
+	sqlDeleteAuthenticationGroup               string
+	sqlInsertAuthenticationUserGroup           string
+	sqlDeleteAuthenticationUserGroup           string
+	sqlDeleteAuthenticationUserGroupsByUserID  string
+	sqlDeleteAuthenticationUserGroupsByGroupID string
+	sqlSelectAuthenticationUserGroupsByUserID  string
+	sqlSelectAuthenticationUserGroupsByGroupID string
+
 	// Table: migrations.
 	sqlInsertMigration       string
 	sqlSelectMigrations      string
@@ -485,6 +523,7 @@ type SQLProviderKeys struct {
 	recoveryCodeHMAC []byte
 
 	externalIdentityLinkHMAC []byte
+	authenticationUserHMAC   []byte
 }
 
 func (p *SQLProvider) conn(ctx context.Context) (conn SQLXConnection) {
@@ -551,6 +590,10 @@ func (p *SQLProvider) StartupCheck() (err error) {
 
 	if p.keys.externalIdentityLinkHMAC, err = p.getHMACExternalIdentityLink(ctx); err != nil {
 		return fmt.Errorf("failed to initialize the hmac external identity link signature key during startup: %w", err)
+	}
+
+	if p.keys.authenticationUserHMAC, err = p.getHMACAuthenticationUser(ctx); err != nil {
+		return fmt.Errorf("failed to initialize the hmac authentication user signature key during startup: %w", err)
 	}
 
 	return nil

@@ -39,6 +39,33 @@ var (
 	// but its signature is not valid, which indicates the link was not written by Authelia with the current key.
 	ErrExternalIdentityLinkSignatureInvalid = errors.New("the external identity link signature is not valid")
 
+	// ErrNoAuthenticationUser is returned when a user of the database authentication backend does not exist.
+	ErrNoAuthenticationUser = errors.New("no authentication user found")
+
+	// ErrNoAuthenticationGroup is returned when a group of the database authentication backend does not exist.
+	ErrNoAuthenticationGroup = errors.New("no authentication group found")
+
+	// ErrAuthenticationUserSignatureInvalid is returned when a user of the database authentication backend has been
+	// found in the database but its signature is not valid, which indicates the row was not written by Authelia with
+	// the current key. Such a user must be treated as if it does not exist.
+	ErrAuthenticationUserSignatureInvalid = errors.New("the authentication user signature is not valid")
+
+	// ErrAuthenticationUsernameTaken is returned when a username is already used by another user.
+	ErrAuthenticationUsernameTaken = errors.New("the username is already taken")
+
+	// ErrAuthenticationUsernameDeleted is returned when a username belonged to a deleted user. Such a username is never
+	// used again, as data such as passkeys, consent, and subject identifiers are keyed by the username.
+	ErrAuthenticationUsernameDeleted = errors.New("the username belonged to a deleted user and can't be used again")
+
+	// ErrAuthenticationEmailTaken is returned when an email is already used by another user.
+	ErrAuthenticationEmailTaken = errors.New("the email is already used by another user")
+
+	// ErrAuthenticationGroupExists is returned when a group with the same name already exists.
+	ErrAuthenticationGroupExists = errors.New("the group already exists")
+
+	// ErrAuthenticationUserGroupExists is returned when a user is already a member of a group.
+	ErrAuthenticationUserGroupExists = errors.New("the user is already a member of the group")
+
 	// ErrNoAvailableMigrations is returned when no available migrations can be found.
 	ErrNoAvailableMigrations = errors.New("no available migrations")
 

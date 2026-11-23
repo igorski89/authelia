@@ -118,6 +118,14 @@ const (
 	SchemaLatest = 2147483647
 )
 
+// Tables of the database authentication backend.
+const (
+	tableAuthenticationUsers        = "authentication_users"
+	tableAuthenticationGroups       = "authentication_groups"
+	tableAuthenticationUserGroups   = "authentication_user_groups"
+	tableAuthenticationUsersDeleted = "authentication_users_deleted"
+)
+
 type ctxKey int
 
 const (
@@ -130,6 +138,7 @@ const (
 	hmacNameOneTimePassword      = "otp"
 	hmacNameRecoveryCode         = "rc"
 	hmacNameExternalIdentityLink = "external_identity_link"
+	hmacNameAuthenticationUser   = "authentication_user"
 	hmacNameSession              = "session"
 )
 

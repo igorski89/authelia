@@ -242,6 +242,15 @@ This subcommand allows rotation of the HMAC key used to sign external identity l
 	cmdAutheliaStorageEncryptionRotateHMACExternalIdentityLinkExample = `authelia storage encryption rotate hmac external-identity-link --config config.yml
 authelia storage encryption rotate hmac external-identity-link --encryption-key b3453fde-ecc2-4a1f-9422-2707ddbed495 --postgres.address tcp://postgres:5432 --postgres.password autheliapw`
 
+	cmdAutheliaStorageEncryptionRotateHMACAuthenticationUserShort = "Rotate the authentication user HMAC key"
+
+	cmdAutheliaStorageEncryptionRotateHMACAuthenticationUserLong = `Rotate the authentication user HMAC key.
+
+This subcommand allows rotation of the HMAC key used to sign the users and group memberships of the database authentication backend. In addition it signs every row in the 'authentication_users' and 'authentication_user_groups' tables again with the new key. If any row has a signature which is not valid for the current key nothing is changed, so the row can be investigated.`
+
+	cmdAutheliaStorageEncryptionRotateHMACAuthenticationUserExample = `authelia storage encryption rotate hmac authentication-user --config config.yml
+authelia storage encryption rotate hmac authentication-user --encryption-key b3453fde-ecc2-4a1f-9422-2707ddbed495 --postgres.address tcp://postgres:5432 --postgres.password autheliapw`
+
 	cmdAutheliaStorageBansShort = "Manages user and ip bans"
 
 	cmdAutheliaStorageBansLong = `Manages user and ip bans.
@@ -962,6 +971,7 @@ const (
 
 const (
 	cmdUseStorageEncryptionRotateHMACExternalIdentityLink = "external-identity-link"
+	cmdUseStorageEncryptionRotateHMACAuthenticationUser   = "authentication-user"
 
 	cmdUseHash          = "hash"
 	cmdUseHashArgon2    = "argon2"

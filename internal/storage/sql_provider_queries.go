@@ -960,3 +960,115 @@ const (
 			) AS batch
 		);`
 )
+
+const (
+	queryFmtInsertAuthenticationUser = `
+		INSERT INTO %s (created_at, updated_at, username, email, display_name, given_name, family_name, password, disabled, signature)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
+
+	queryFmtSelectAuthenticationUserByUsername = `
+		SELECT id, created_at, updated_at, username, email, display_name, given_name, family_name, password, disabled, signature
+		FROM %s
+		WHERE username = ?;`
+
+	queryFmtSelectAuthenticationUserByEmail = `
+		SELECT id, created_at, updated_at, username, email, display_name, given_name, family_name, password, disabled, signature
+		FROM %s
+		WHERE email = ?;`
+
+	queryFmtSelectAuthenticationUsers = `
+		SELECT id, created_at, updated_at, username, email, display_name, given_name, family_name, password, disabled, signature
+		FROM %s
+		ORDER BY username ASC
+		LIMIT ?
+		OFFSET ?;`
+
+	queryFmtSelectAuthenticationUsersAll = `
+		SELECT id, created_at, updated_at, username, email, display_name, given_name, family_name, password, disabled, signature
+		FROM %s;`
+
+	queryFmtUpdateAuthenticationUser = `
+		UPDATE %s
+		SET updated_at = ?, email = ?, display_name = ?, given_name = ?, family_name = ?, password = ?, disabled = ?, signature = ?
+		WHERE id = ?;`
+
+	queryFmtUpdateAuthenticationUserSignature = `
+		UPDATE %s
+		SET signature = ?
+		WHERE id = ?;`
+
+	queryFmtDeleteAuthenticationUser = `
+		DELETE FROM %s
+		WHERE id = ?;`
+
+	queryFmtInsertAuthenticationUserDeleted = `
+		INSERT INTO %s (username, deleted_at)
+		VALUES (?, ?);`
+
+	queryFmtSelectAuthenticationUserDeletedCount = `
+		SELECT COUNT(username)
+		FROM %s
+		WHERE username = ?;`
+
+	queryFmtInsertAuthenticationGroup = `
+		INSERT INTO %s (created_at, name)
+		VALUES (?, ?);`
+
+	queryFmtSelectAuthenticationGroupByName = `
+		SELECT id, created_at, name
+		FROM %s
+		WHERE name = ?;`
+
+	queryFmtSelectAuthenticationGroups = `
+		SELECT id, created_at, name
+		FROM %s
+		ORDER BY name ASC;`
+
+	queryFmtDeleteAuthenticationGroup = `
+		DELETE FROM %s
+		WHERE id = ?;`
+
+	queryFmtInsertAuthenticationUserGroup = `
+		INSERT INTO %s (user_id, group_id, created_at, signature)
+		VALUES (?, ?, ?, ?);`
+
+	queryFmtDeleteAuthenticationUserGroup = `
+		DELETE FROM %s
+		WHERE user_id = ? AND group_id = ?;`
+
+	queryFmtDeleteAuthenticationUserGroupsByUserID = `
+		DELETE FROM %s
+		WHERE user_id = ?;`
+
+	queryFmtDeleteAuthenticationUserGroupsByGroupID = `
+		DELETE FROM %s
+		WHERE group_id = ?;`
+
+	queryFmtUpdateAuthenticationUserGroupSignature = `
+		UPDATE %s
+		SET signature = ?
+		WHERE user_id = ? AND group_id = ?;`
+
+	// The membership queries are formatted with the memberships, users, and groups tables in that order.
+	queryFmtSelectAuthenticationUserGroupsByUserID = `
+		SELECT ug.user_id, ug.group_id, ug.created_at, u.username, g.name, ug.signature
+		FROM %s ug
+		JOIN %s u ON u.id = ug.user_id
+		JOIN %s g ON g.id = ug.group_id
+		WHERE ug.user_id = ?
+		ORDER BY g.name ASC;`
+
+	queryFmtSelectAuthenticationUserGroupsByGroupID = `
+		SELECT ug.user_id, ug.group_id, ug.created_at, u.username, g.name, ug.signature
+		FROM %s ug
+		JOIN %s u ON u.id = ug.user_id
+		JOIN %s g ON g.id = ug.group_id
+		WHERE ug.group_id = ?
+		ORDER BY u.username ASC;`
+
+	queryFmtSelectAuthenticationUserGroupsAll = `
+		SELECT ug.user_id, ug.group_id, ug.created_at, u.username, g.name, ug.signature
+		FROM %s ug
+		JOIN %s u ON u.id = ug.user_id
+		JOIN %s g ON g.id = ug.group_id;`
+)
