@@ -28,15 +28,7 @@ func ValidateAuthenticationBackend(config *schema.AuthenticationBackend, validat
 		validator.Push(errors.New(errFmtAuthBackendNotConfigured))
 	}
 
-	if !config.RefreshInterval.Valid() {
-		// The database backend is always current and cheap to query, so a disabled, deleted, or changed user takes
-		// effect on the next request rather than after the refresh interval.
-		if (config.File != nil && config.File.Watch) || config.Database != nil {
-			config.RefreshInterval = schema.NewRefreshIntervalDurationAlways()
-		} else {
-			config.RefreshInterval = schema.NewRefreshIntervalDuration(schema.RefreshIntervalDefault)
-		}
-	}
+	validateAuthenticationBackendRefreshInterval(config)
 
 	if config.PasswordReset.CustomURL.String() != "" {
 		switch config.PasswordReset.CustomURL.Scheme {
@@ -74,6 +66,20 @@ func ValidateAuthenticationBackend(config *schema.AuthenticationBackend, validat
 
 	if config.ExternalIdentity != nil {
 		ValidateAuthenticationBackendExternalIdentity(config.ExternalIdentity, validator)
+	}
+}
+
+func validateAuthenticationBackendRefreshInterval(config *schema.AuthenticationBackend) {
+	if config.RefreshInterval.Valid() {
+		return
+	}
+
+	// The database backend is always current and cheap to query, so a disabled, deleted, or changed user takes effect on
+	// the next request rather than after the refresh interval.
+	if (config.File != nil && config.File.Watch) || config.Database != nil {
+		config.RefreshInterval = schema.NewRefreshIntervalDurationAlways()
+	} else {
+		config.RefreshInterval = schema.NewRefreshIntervalDuration(schema.RefreshIntervalDefault)
 	}
 }
 
