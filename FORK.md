@@ -46,13 +46,26 @@ Every feature the fork adds or changes, with the upstream files it touches. Each
 |---|---|---|
 | Multi-segment server path (`server.address` path such as `/realms/<realm>`, keeps Keycloak's issuer) | `internal/configuration/validator/{server.go,const.go,server_test.go}`, `internal/configuration/provider_test.go`, `internal/middlewares/strip_path_test.go` | 2026-11-23 |
 | Admin API authorization: scopes `authelia.admin.read` / `authelia.admin.write`; middleware `RequireBearerClientCredentials` admits only client-credentials Access Tokens with the route's scope and the audience `<issuer>/api/admin`; validator requires such clients to be confidential, `client_credentials`-only, admin-scopes-only, with an audience or resource; first route `GET /api/admin/whoami` | `internal/oidc/const.go`, `internal/middlewares/{require_bearer.go,const.go}`, `internal/handlers/{handler_admin.go,handler_admin_test.go}`, `internal/server/{handlers.go,const.go}`, `internal/configuration/validator/{identity_providers.go,const.go,identity_providers_test.go}` | 2026-11-23 |
+| Users in the database (tables `authentication_users`, `authentication_groups`, `authentication_user_groups`, `authentication_users_deleted`; migration V0035) | `internal/storage/migrations/{sqlite,postgres,mysql}/V0035.AuthenticationUsers.*.sql`, `internal/storage/migrations_test.go` (`LatestVersion`) | 2026-11-23 |
 
 Fork-only build files: `FORK.md`, `sgnl/` (image), `.github/workflows/sgnl-*.yml`, `.github/actions/sgnl-checkout/`.
+
+## Backlog
+
+Planned work that isn't started yet.
+
+- **MCP login support** (for SGNL's MCP gateway; Keycloak 26.8.2's experimental `cimd:v1` is the reference):
+  - Client ID Metadata Documents (CIMD): the `client_id` is an HTTPS URL to the client's metadata, so MCP clients log
+    in without registering first; advertise `client_id_metadata_document_supported` in discovery.
+  - Resource indicators / audience for the gateway's `/mcp` URL.
+  - RFC 8693 token exchange: the gateway trades a user's token (audience = gateway) for a short-lived per-app token for
+    the same user.
 
 ## Build
 
 - CI: `.github/workflows/sgnl-ci.yml` runs Go tests with `-race`, golangci-lint, REUSE and yamllint, and the frontend
-  build, tests and ESLint. It also builds the linux/amd64 image. It mirrors what upstream's Buildkite pipeline runs
+  build, tests and ESLint. It runs every migration up, one version down, and up again on real PostgreSQL and MySQL
+  (upstream's unit tests only execute the SQLite SQL). It also builds the linux/amd64 image. It mirrors what upstream's Buildkite pipeline runs
   (`authelia-scripts ci`, `.buildkite/steps/lint.sh`).
 - Nightly drift check: `.github/workflows/sgnl-upstream-nightly.yml` merges upstream `master` into `sgnl` inside the
   runner (never pushed) and runs the same CI. A red run means the next sync has work.

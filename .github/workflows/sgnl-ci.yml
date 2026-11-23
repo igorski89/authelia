@@ -56,6 +56,63 @@ jobs:
           # shellcheck disable=SC2046
           go test -race -covermode=atomic $(go list ./... | grep -v suites)
 
+  storage-engines:
+    name: 'Migrations on PostgreSQL and MySQL'
+    runs-on: 'ubuntu-latest'
+    services:
+      postgres:
+        image: 'postgres:17'
+        env:
+          POSTGRES_USER: 'authelia'
+          POSTGRES_PASSWORD: 'authelia'
+          POSTGRES_DB: 'authelia'
+        ports:
+          - '5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U authelia" --health-interval 5s --health-timeout 5s --health-retries 20
+      mysql:
+        image: 'mysql:8.4'
+        env:
+          MYSQL_ROOT_PASSWORD: 'authelia'
+          MYSQL_USER: 'authelia'
+          MYSQL_PASSWORD: 'authelia'
+          MYSQL_DATABASE: 'authelia'
+        ports:
+          - '3306:3306'
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -pauthelia" --health-interval 5s --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/sgnl-checkout
+        with:
+          merge_upstream: '${{ env.MERGE_UPSTREAM }}'
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5  # v7.1.0
+        with:
+          go-version-file: 'go.mod'
+      - name: 'Migrate up, down one version, and up again'
+        env:
+          AUTHELIA_STORAGE_ENCRYPTION_KEY: 'a-throwaway-storage-encryption-key-for-ci-only-0123456789'
+        run: |
+          go build -o authelia ./cmd/authelia
+          echo '---' > ci-empty.yml
+          dir=internal/storage/migrations/postgres
+          latest="$(find "${dir}" -name 'V*.up.sql' -exec basename {} \; | cut -c2-5 | sort -n | tail -1)"
+          latest="$((10#${latest}))"
+          for engine in postgres mysql; do
+            if [ "${engine}" = postgres ]; then port=5432; else port=3306; fi
+            args=(-c ci-empty.yml "--${engine}.address" "tcp://127.0.0.1:${port}" "--${engine}.username" authelia
+              "--${engine}.password" authelia "--${engine}.database" authelia)
+            ./authelia storage migrate up "${args[@]}"
+            ./authelia storage migrate down --target "$((latest - 1))" --destroy-data "${args[@]}"
+            ./authelia storage migrate up "${args[@]}"
+            ./authelia storage schema-info "${args[@]}" | tee schema.txt
+            grep -q "Schema Version: ${latest}$" schema.txt
+          done
+
   go-lint:
     name: 'Go lint'
     runs-on: 'ubuntu-latest'
