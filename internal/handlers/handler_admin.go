@@ -6,6 +6,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -116,7 +117,7 @@ func AdminUsersPOST(service *management.Service) middlewares.RequestHandler {
 			return
 		}
 
-		user, err := service.CreateUser(ctx, in)
+		user, err := service.CreateUser(adminActor(ctx), in)
 		if err != nil {
 			replyAdminError(ctx, err)
 			return
@@ -138,7 +139,7 @@ func AdminUserPATCH(service *management.Service) middlewares.RequestHandler {
 			return
 		}
 
-		user, err := service.UpdateUser(ctx, adminPathValue(ctx, "username"), changes)
+		user, err := service.UpdateUser(adminActor(ctx), adminPathValue(ctx, "username"), changes)
 		if err != nil {
 			replyAdminError(ctx, err)
 			return
@@ -155,7 +156,7 @@ func AdminUserDELETE(service *management.Service) middlewares.RequestHandler {
 	return func(ctx *middlewares.AutheliaCtx) {
 		username := adminPathValue(ctx, "username")
 
-		if err := service.DeleteUser(ctx, username); err != nil {
+		if err := service.DeleteUser(adminActor(ctx), username); err != nil {
 			replyAdminError(ctx, err)
 			return
 		}
@@ -183,7 +184,7 @@ func AdminUserPasswordPUT(service *management.Service) middlewares.RequestHandle
 
 		username := adminPathValue(ctx, "username")
 
-		if err := service.SetPassword(ctx, username, password); err != nil {
+		if err := service.SetPassword(adminActor(ctx), username, password); err != nil {
 			replyAdminError(ctx, err)
 			return
 		}
@@ -199,7 +200,7 @@ func AdminUserPasswordDELETE(service *management.Service) middlewares.RequestHan
 	return func(ctx *middlewares.AutheliaCtx) {
 		username := adminPathValue(ctx, "username")
 
-		if err := service.SetPassword(ctx, username, management.Password{}); err != nil {
+		if err := service.SetPassword(adminActor(ctx), username, management.Password{}); err != nil {
 			replyAdminError(ctx, err)
 			return
 		}
@@ -225,7 +226,7 @@ func AdminUserLogoutPOST(service *management.Service) middlewares.RequestHandler
 
 		username := adminPathValue(ctx, "username")
 
-		revocation, err := service.RevokeUser(ctx, username, in.ClientID)
+		revocation, err := service.RevokeUser(adminActor(ctx), username, in.ClientID)
 		if err != nil {
 			replyAdminError(ctx, err)
 			return
@@ -242,7 +243,7 @@ func AdminUserGroupPUT(service *management.Service) middlewares.RequestHandler {
 	return func(ctx *middlewares.AutheliaCtx) {
 		username, group := adminPathValue(ctx, "username"), adminPathValue(ctx, "group")
 
-		if err := service.AddUserToGroup(ctx, username, group); err != nil {
+		if err := service.AddUserToGroup(adminActor(ctx), username, group); err != nil {
 			replyAdminError(ctx, err)
 			return
 		}
@@ -258,7 +259,7 @@ func AdminUserGroupDELETE(service *management.Service) middlewares.RequestHandle
 	return func(ctx *middlewares.AutheliaCtx) {
 		username, group := adminPathValue(ctx, "username"), adminPathValue(ctx, "group")
 
-		if err := service.RemoveUserFromGroup(ctx, username, group); err != nil {
+		if err := service.RemoveUserFromGroup(adminActor(ctx), username, group); err != nil {
 			replyAdminError(ctx, err)
 			return
 		}
@@ -267,6 +268,72 @@ func AdminUserGroupDELETE(service *management.Service) middlewares.RequestHandle
 
 		ctx.SetStatusCode(fasthttp.StatusNoContent)
 	}
+}
+
+// AdminAuditResponse is the body of a successful response from the AdminAuditGET handler.
+type AdminAuditResponse struct {
+	Entries []management.AuditEntry `json:"entries"`
+	Limit   int                     `json:"limit"`
+	Page    int                     `json:"page"`
+}
+
+// AdminEventsResponse is the body of a successful response from the AdminEventsGET handler.
+type AdminEventsResponse struct {
+	Events []management.AuthenticationEvent `json:"events"`
+	Limit  int                              `json:"limit"`
+	Page   int                              `json:"page"`
+}
+
+// AdminAuditGET lists the changes made through the administration API and the CLI, newest first, with the optional
+// query parameters 'username', 'limit', and 'page'.
+func AdminAuditGET(service *management.Service) middlewares.RequestHandler {
+	return func(ctx *middlewares.AutheliaCtx) {
+		username, limit, page, err := adminListQuery(ctx)
+		if err != nil {
+			replyAdminError(ctx, err)
+			return
+		}
+
+		entries, err := service.ListAudit(ctx, username, limit, page)
+		if err != nil {
+			replyAdminError(ctx, err)
+			return
+		}
+
+		replyAdmin(ctx, fasthttp.StatusOK, AdminAuditResponse{Entries: entries, Limit: limit, Page: page})
+	}
+}
+
+// AdminEventsGET lists the authentication attempts, newest first, with the optional query parameters 'username',
+// 'limit', and 'page'.
+func AdminEventsGET(service *management.Service) middlewares.RequestHandler {
+	return func(ctx *middlewares.AutheliaCtx) {
+		username, limit, page, err := adminListQuery(ctx)
+		if err != nil {
+			replyAdminError(ctx, err)
+			return
+		}
+
+		events, err := service.ListAuthenticationEvents(ctx, username, limit, page)
+		if err != nil {
+			replyAdminError(ctx, err)
+			return
+		}
+
+		replyAdmin(ctx, fasthttp.StatusOK, AdminEventsResponse{Events: events, Limit: limit, Page: page})
+	}
+}
+
+func adminListQuery(ctx *middlewares.AutheliaCtx) (username string, limit, page int, err error) {
+	if limit, err = adminQueryInt(ctx, "limit", management.DefaultPageSize); err != nil {
+		return "", 0, 0, err
+	}
+
+	if page, err = adminQueryInt(ctx, "page", 0); err != nil {
+		return "", 0, 0, err
+	}
+
+	return string(ctx.QueryArgs().Peek("username")), limit, page, nil
 }
 
 // AdminGroupsGET lists the groups.
@@ -292,7 +359,7 @@ func AdminGroupsPOST(service *management.Service) middlewares.RequestHandler {
 			return
 		}
 
-		if err := service.CreateGroup(ctx, in.Name); err != nil {
+		if err := service.CreateGroup(adminActor(ctx), in.Name); err != nil {
 			replyAdminError(ctx, err)
 			return
 		}
@@ -308,7 +375,7 @@ func AdminGroupDELETE(service *management.Service) middlewares.RequestHandler {
 	return func(ctx *middlewares.AutheliaCtx) {
 		group := adminPathValue(ctx, "group")
 
-		if err := service.DeleteGroup(ctx, group); err != nil {
+		if err := service.DeleteGroup(adminActor(ctx), group); err != nil {
 			replyAdminError(ctx, err)
 			return
 		}
@@ -334,6 +401,12 @@ func AdminGroupMembersGET(service *management.Service) middlewares.RequestHandle
 
 // adminPathValue returns a path parameter, decoding any percent-encoding (for example '%40' for '@'), which the
 // router leaves as it is. Usernames and group names never contain '%', so decoding can't change their meaning.
+// adminActor returns the context of the request carrying the client calling the administration API as the actor which
+// the audit records.
+func adminActor(ctx *middlewares.AutheliaCtx) context.Context {
+	return management.WithActor(ctx, "client:"+ctx.BearerClientID())
+}
+
 func adminPathValue(ctx *middlewares.AutheliaCtx, name string) string {
 	value, _ := ctx.UserValue(name).(string)
 

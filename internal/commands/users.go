@@ -6,10 +6,13 @@ package commands
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os/user"
 	"strings"
 	"text/tabwriter"
 
@@ -84,6 +87,7 @@ func newUsersCmd(ctx *CmdCtx) (cmd *cobra.Command) {
 		newUsersPasswordCmd(ctx),
 		newUsersDeleteCmd(ctx),
 		newUsersLogoutCmd(ctx),
+		newUsersAuditCmd(ctx),
 	)
 
 	return cmd
@@ -208,6 +212,15 @@ Revokes the user's OAuth 2.0 and OpenID Connect 1.0 tokens and pre-configured co
 	return cmd
 }
 
+func newUsersAuditCmd(ctx *CmdCtx) (cmd *cobra.Command) {
+	cmd = newSimpleCmd("audit [username]", "List the changes made to users and groups, newest first", cobra.MaximumNArgs(1), ctx.UsersAuditRunE)
+
+	cmd.Flags().Int(cmdFlagNameLimit, management.DefaultPageSize, fmt.Sprintf("the number of entries to list, at most %d", management.MaxPageSize))
+	cmd.Flags().Int(cmdFlagNamePage, 0, "the page of entries to list, starting at 0")
+
+	return cmd
+}
+
 func addUsersPasswordFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(cmdFlagNamePasswordStdin, false, "read the password from the first line of the standard input")
 	cmd.Flags().String(cmdFlagNamePasswordDigest, "", "a password digest in the PHC string format to store as it is")
@@ -293,6 +306,18 @@ func (ctx *CmdCtx) usersSessions() (sessions management.Sessions, err error) {
 	}
 
 	return provider, nil
+}
+
+// usersActor returns the context carrying the operating system user running the command as the actor which the audit
+// records.
+func (ctx *CmdCtx) usersActor() context.Context {
+	name := "unknown"
+
+	if u, err := user.Current(); err == nil && u.Username != "" {
+		name = u.Username
+	}
+
+	return management.WithActor(ctx, "cli:"+name)
 }
 
 // withManagementService runs fn with the management service and closes the storage afterwards.
@@ -385,7 +410,7 @@ func (ctx *CmdCtx) UsersCreateRunE(cmd *cobra.Command, args []string) (err error
 	return ctx.withManagementService(func(service *management.Service) (err error) {
 		var user *management.User
 
-		if user, err = service.CreateUser(ctx, in); err != nil {
+		if user, err = service.CreateUser(ctx.usersActor(), in); err != nil {
 			return err
 		}
 
@@ -421,7 +446,7 @@ func (ctx *CmdCtx) UsersUpdateRunE(cmd *cobra.Command, args []string) (err error
 	return ctx.withManagementService(func(service *management.Service) (err error) {
 		var user *management.User
 
-		if user, err = service.UpdateUser(ctx, args[0], changes); err != nil {
+		if user, err = service.UpdateUser(ctx.usersActor(), args[0], changes); err != nil {
 			return err
 		}
 
@@ -442,7 +467,7 @@ func (ctx *CmdCtx) UsersPasswordRunE(cmd *cobra.Command, args []string) (err err
 	}
 
 	return ctx.withManagementService(func(service *management.Service) (err error) {
-		if err = service.SetPassword(ctx, args[0], password); err != nil {
+		if err = service.SetPassword(ctx.usersActor(), args[0], password); err != nil {
 			return err
 		}
 
@@ -479,7 +504,7 @@ func (ctx *CmdCtx) UsersDeleteRunE(cmd *cobra.Command, args []string) (err error
 	}
 
 	return ctx.withManagementService(func(service *management.Service) (err error) {
-		if err = service.DeleteUser(ctx, args[0]); err != nil {
+		if err = service.DeleteUser(ctx.usersActor(), args[0]); err != nil {
 			return err
 		}
 
@@ -500,7 +525,7 @@ func (ctx *CmdCtx) UsersLogoutRunE(cmd *cobra.Command, args []string) (err error
 	return ctx.withManagementService(func(service *management.Service) (err error) {
 		var revocation *management.Revocation
 
-		if revocation, err = service.RevokeUser(ctx, args[0], clientID); err != nil {
+		if revocation, err = service.RevokeUser(ctx.usersActor(), args[0], clientID); err != nil {
 			return err
 		}
 
@@ -518,6 +543,51 @@ func writeRevocation(w io.Writer, username string, revocation *management.Revoca
 	} else {
 		_, _ = fmt.Fprintf(w, "Destroyed %d portal session(s).\n", *revocation.Sessions)
 	}
+}
+
+// UsersAuditRunE is the RunE for the authelia users audit command.
+func (ctx *CmdCtx) UsersAuditRunE(cmd *cobra.Command, args []string) (err error) {
+	var (
+		limit, page int
+		username    string
+	)
+
+	if limit, err = cmd.Flags().GetInt(cmdFlagNameLimit); err != nil {
+		return err
+	}
+
+	if page, err = cmd.Flags().GetInt(cmdFlagNamePage); err != nil {
+		return err
+	}
+
+	if len(args) != 0 {
+		username = args[0]
+	}
+
+	return ctx.withManagementService(func(service *management.Service) (err error) {
+		var entries []management.AuditEntry
+
+		if entries, err = service.ListAudit(ctx, username, limit, page); err != nil {
+			return err
+		}
+
+		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+
+		_, _ = fmt.Fprintln(w, "TIME\tACTOR\tACTION\tUSERNAME\tGROUP\tDETAILS")
+
+		for _, entry := range entries {
+			details := ""
+
+			if len(entry.Details) != 0 {
+				data, _ := json.Marshal(entry.Details)
+				details = string(data)
+			}
+
+			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", entry.Time.Format("2006-01-02 15:04:05 MST"), entry.Actor, entry.Action, entry.Username, entry.Group, details)
+		}
+
+		return w.Flush()
+	})
 }
 
 // GroupsListRunE is the RunE for the authelia groups list command.
@@ -540,7 +610,7 @@ func (ctx *CmdCtx) GroupsListRunE(cmd *cobra.Command, _ []string) (err error) {
 // GroupsCreateRunE is the RunE for the authelia groups create command.
 func (ctx *CmdCtx) GroupsCreateRunE(cmd *cobra.Command, args []string) (err error) {
 	return ctx.withManagementService(func(service *management.Service) (err error) {
-		if err = service.CreateGroup(ctx, args[0]); err != nil {
+		if err = service.CreateGroup(ctx.usersActor(), args[0]); err != nil {
 			return err
 		}
 
@@ -553,7 +623,7 @@ func (ctx *CmdCtx) GroupsCreateRunE(cmd *cobra.Command, args []string) (err erro
 // GroupsDeleteRunE is the RunE for the authelia groups delete command.
 func (ctx *CmdCtx) GroupsDeleteRunE(cmd *cobra.Command, args []string) (err error) {
 	return ctx.withManagementService(func(service *management.Service) (err error) {
-		if err = service.DeleteGroup(ctx, args[0]); err != nil {
+		if err = service.DeleteGroup(ctx.usersActor(), args[0]); err != nil {
 			return err
 		}
 
@@ -584,7 +654,7 @@ func (ctx *CmdCtx) GroupsMembersRunE(cmd *cobra.Command, args []string) (err err
 func (ctx *CmdCtx) GroupsAddRunE(cmd *cobra.Command, args []string) (err error) {
 	return ctx.withManagementService(func(service *management.Service) (err error) {
 		for _, username := range args[1:] {
-			if err = service.AddUserToGroup(ctx, username, args[0]); err != nil {
+			if err = service.AddUserToGroup(ctx.usersActor(), username, args[0]); err != nil {
 				return err
 			}
 
@@ -599,7 +669,7 @@ func (ctx *CmdCtx) GroupsAddRunE(cmd *cobra.Command, args []string) (err error) 
 func (ctx *CmdCtx) GroupsRemoveRunE(cmd *cobra.Command, args []string) (err error) {
 	return ctx.withManagementService(func(service *management.Service) (err error) {
 		for _, username := range args[1:] {
-			if err = service.RemoveUserFromGroup(ctx, username, args[0]); err != nil {
+			if err = service.RemoveUserFromGroup(ctx.usersActor(), username, args[0]); err != nil {
 				return err
 			}
 

@@ -457,6 +457,9 @@ func RegisterAdminRoutes(r *router.Router, config *schema.Configuration, provide
 	r.PUT(prefixAPIAdmin+"/users/{username}/groups/{group}", write(handlers.AdminUserGroupPUT(service)))
 	r.DELETE(prefixAPIAdmin+"/users/{username}/groups/{group}", write(handlers.AdminUserGroupDELETE(service)))
 
+	r.GET(prefixAPIAdmin+"/audit", read(handlers.AdminAuditGET(service)))
+	r.GET(prefixAPIAdmin+"/events", read(handlers.AdminEventsGET(service)))
+
 	r.GET(prefixAPIAdmin+"/groups", read(handlers.AdminGroupsGET(service)))
 	r.POST(prefixAPIAdmin+"/groups", write(handlers.AdminGroupsPOST(service)))
 	r.DELETE(prefixAPIAdmin+"/groups/{group}", write(handlers.AdminGroupDELETE(service)))

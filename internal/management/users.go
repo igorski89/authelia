@@ -214,7 +214,7 @@ func (s *Service) CreateUser(ctx context.Context, in NewUser) (user *User, err e
 			}
 		}
 
-		return nil
+		return s.audit(ctx, AuditActionUserCreate, username, "", map[string]any{"groups": in.Groups, "disabled": in.Disabled, "password": passwordKind(in.Password)})
 	})
 	if err != nil {
 		return nil, wrap(err)
@@ -283,7 +283,20 @@ func (s *Service) RevokeUser(ctx context.Context, username, clientID string) (re
 
 	revocation = &Revocation{}
 
-	if revocation.Tokens, err = s.store.RevokeOAuth2SessionsByUsername(ctx, username, clientID); err != nil {
+	err = s.transaction(ctx, func(ctx context.Context) (err error) {
+		if revocation.Tokens, err = s.store.RevokeOAuth2SessionsByUsername(ctx, username, clientID); err != nil {
+			return err
+		}
+
+		details := map[string]any{"tokens": revocation.Tokens}
+
+		if clientID != "" {
+			details["client_id"] = clientID
+		}
+
+		return s.audit(ctx, AuditActionUserLogout, username, "", details)
+	})
+	if err != nil {
 		return nil, err
 	}
 
@@ -342,37 +355,11 @@ func (s *Service) UpdateUser(ctx context.Context, username string, changes UserC
 
 		canonical = current.Username
 
-		email, displayName, givenName, familyName := current.Email, current.DisplayName, current.GivenName, current.FamilyName
-
-		if changes.Email != nil {
-			email = model.CanonicalAuthenticationUsername(*changes.Email)
-		}
-
-		if changes.DisplayName != nil {
-			displayName = strings.TrimSpace(*changes.DisplayName)
-		}
-
-		if changes.GivenName != nil {
-			givenName = strings.TrimSpace(*changes.GivenName)
-		}
-
-		if changes.FamilyName != nil {
-			familyName = strings.TrimSpace(*changes.FamilyName)
-		}
-
-		if err = validateProfile(email, displayName, givenName, familyName); err != nil {
+		if err = s.updateProfile(ctx, current, changes); err != nil {
 			return err
 		}
 
-		if err = s.store.UpdateAuthenticationUserProfile(ctx, canonical, email, displayName, givenName, familyName); err != nil {
-			return err
-		}
-
-		if changes.Disabled != nil && *changes.Disabled != current.Disabled {
-			return s.store.UpdateAuthenticationUserDisabled(ctx, canonical, *changes.Disabled)
-		}
-
-		return nil
+		return s.updateDisabled(ctx, current, changes.Disabled)
 	})
 	if err != nil {
 		return nil, wrap(err)
@@ -389,6 +376,72 @@ func (s *Service) UpdateUser(ctx context.Context, username string, changes UserC
 	return s.getUser(ctx, canonical)
 }
 
+// updateProfile applies the profile changes which differ from the current values, and audits the changed fields.
+func (s *Service) updateProfile(ctx context.Context, current *model.AuthenticationUser, changes UserChanges) (err error) {
+	fields := []struct {
+		name    string
+		current string
+		change  *string
+		value   string
+	}{
+		{"email", current.Email, changes.Email, ""},
+		{"display_name", current.DisplayName, changes.DisplayName, ""},
+		{"given_name", current.GivenName, changes.GivenName, ""},
+		{"family_name", current.FamilyName, changes.FamilyName, ""},
+	}
+
+	var changed []string
+
+	for i := range fields {
+		fields[i].value = fields[i].current
+
+		if fields[i].change != nil {
+			fields[i].value = strings.TrimSpace(*fields[i].change)
+		}
+
+		if i == 0 {
+			fields[i].value = model.CanonicalAuthenticationUsername(fields[i].value)
+		}
+
+		if fields[i].value != fields[i].current {
+			changed = append(changed, fields[i].name)
+		}
+	}
+
+	email, displayName, givenName, familyName := fields[0].value, fields[1].value, fields[2].value, fields[3].value
+
+	if err = validateProfile(email, displayName, givenName, familyName); err != nil {
+		return err
+	}
+
+	if len(changed) == 0 {
+		return nil
+	}
+
+	if err = s.store.UpdateAuthenticationUserProfile(ctx, current.Username, email, displayName, givenName, familyName); err != nil {
+		return err
+	}
+
+	return s.audit(ctx, AuditActionUserUpdate, current.Username, "", map[string]any{"fields": changed})
+}
+
+// updateDisabled disables or enables the user when that changes it, and audits it.
+func (s *Service) updateDisabled(ctx context.Context, current *model.AuthenticationUser, disabled *bool) (err error) {
+	if disabled == nil || *disabled == current.Disabled {
+		return nil
+	}
+
+	if err = s.store.UpdateAuthenticationUserDisabled(ctx, current.Username, *disabled); err != nil {
+		return err
+	}
+
+	if *disabled {
+		return s.audit(ctx, AuditActionUserDisable, current.Username, "", nil)
+	}
+
+	return s.audit(ctx, AuditActionUserEnable, current.Username, "", nil)
+}
+
 // SetPassword sets the password of a user. An empty Password removes it, so the user can only log in another way.
 func (s *Service) SetPassword(ctx context.Context, username string, password Password) (err error) {
 	var digest sql.NullString
@@ -397,7 +450,19 @@ func (s *Service) SetPassword(ctx context.Context, username string, password Pas
 		return err
 	}
 
-	return wrap(s.store.UpdateAuthenticationUserPassword(ctx, username, digest.String))
+	username = model.CanonicalAuthenticationUsername(username)
+
+	return wrap(s.transaction(ctx, func(ctx context.Context) (err error) {
+		if err = s.store.UpdateAuthenticationUserPassword(ctx, username, digest.String); err != nil {
+			return err
+		}
+
+		if !digest.Valid {
+			return s.audit(ctx, AuditActionUserPasswordRemove, username, "", nil)
+		}
+
+		return s.audit(ctx, AuditActionUserPasswordSet, username, "", map[string]any{"password": passwordKind(password)})
+	}))
 }
 
 // DeleteUser deletes a user, ends everything it is logged in with (see RevokeUser), and deletes the second factors and
@@ -453,18 +518,34 @@ func (s *Service) deleteUser(ctx context.Context, username string) (err error) {
 			}
 		}
 
-		return nil
+		return s.audit(ctx, AuditActionUserDelete, username, "", nil)
 	}))
 }
 
 // AddUserToGroup makes a user a member of a group.
 func (s *Service) AddUserToGroup(ctx context.Context, username, group string) (err error) {
-	return wrap(s.store.AddAuthenticationUserGroup(ctx, username, group))
+	username = model.CanonicalAuthenticationUsername(username)
+
+	return wrap(s.transaction(ctx, func(ctx context.Context) (err error) {
+		if err = s.store.AddAuthenticationUserGroup(ctx, username, group); err != nil {
+			return err
+		}
+
+		return s.audit(ctx, AuditActionGroupMemberAdd, username, group, nil)
+	}))
 }
 
 // RemoveUserFromGroup removes a user from a group.
 func (s *Service) RemoveUserFromGroup(ctx context.Context, username, group string) (err error) {
-	return wrap(s.store.RemoveAuthenticationUserGroup(ctx, username, group))
+	username = model.CanonicalAuthenticationUsername(username)
+
+	return wrap(s.transaction(ctx, func(ctx context.Context) (err error) {
+		if err = s.store.RemoveAuthenticationUserGroup(ctx, username, group); err != nil {
+			return err
+		}
+
+		return s.audit(ctx, AuditActionGroupMemberRemove, username, group, nil)
+	}))
 }
 
 // CreateGroup creates a group.
@@ -473,7 +554,13 @@ func (s *Service) CreateGroup(ctx context.Context, name string) (err error) {
 		return err
 	}
 
-	return wrap(s.store.CreateAuthenticationGroup(ctx, name))
+	return wrap(s.transaction(ctx, func(ctx context.Context) (err error) {
+		if err = s.store.CreateAuthenticationGroup(ctx, name); err != nil {
+			return err
+		}
+
+		return s.audit(ctx, AuditActionGroupCreate, "", name, nil)
+	}))
 }
 
 // ListGroups returns every group ordered by name.
@@ -522,7 +609,13 @@ func (s *Service) GroupMembers(ctx context.Context, name string) (members []User
 
 // DeleteGroup deletes a group and its memberships.
 func (s *Service) DeleteGroup(ctx context.Context, name string) (err error) {
-	return wrap(s.store.DeleteAuthenticationGroup(ctx, name))
+	return wrap(s.transaction(ctx, func(ctx context.Context) (err error) {
+		if err = s.store.DeleteAuthenticationGroup(ctx, name); err != nil {
+			return err
+		}
+
+		return s.audit(ctx, AuditActionGroupDelete, "", name, nil)
+	}))
 }
 
 // transaction runs fn in one storage transaction. The signing key is loaded first, as it can't be loaded inside one.
@@ -550,6 +643,17 @@ func (s *Service) transaction(ctx context.Context, fn func(ctx context.Context) 
 	}
 
 	return nil
+}
+
+func passwordKind(password Password) string {
+	switch {
+	case password.Plain != "":
+		return "plain"
+	case password.Digest != "":
+		return "digest"
+	default:
+		return "none"
+	}
 }
 
 func (s *Service) digest(password Password) (digest sql.NullString, err error) {

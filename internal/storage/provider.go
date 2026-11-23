@@ -135,6 +135,17 @@ type Provider interface {
 	// of the user, or only those of the given client when the client identifier isn't empty.
 	RevokeOAuth2SessionsByUsername(ctx context.Context, username, clientID string) (revoked int64, err error)
 
+	// AppendAdministrationAudit records a change made through the administration API or the users and groups commands.
+	AppendAdministrationAudit(ctx context.Context, entry model.AdministrationAuditEntry) (err error)
+
+	// LoadAdministrationAudit loads a page of administration audit entries, newest first, of one user when the username
+	// isn't empty.
+	LoadAdministrationAudit(ctx context.Context, username string, limit, page int) (entries []model.AdministrationAuditEntry, err error)
+
+	// LoadAuthenticationLogs loads a page of authentication attempts, newest first, of one user when the username isn't
+	// empty.
+	LoadAuthenticationLogs(ctx context.Context, username string, limit, page int) (attempts []model.AuthenticationAttempt, err error)
+
 	/*
 		Implementation for User TOTP Configurations.
 	*/

@@ -75,6 +75,8 @@ for engine in postgres mysql; do
   expect_output '^Revoked [0-9]+ token session' ./authelia users logout bob "${users[@]}"
   ./authelia users delete alice --force "${users[@]}"
   expect_fail ./authelia users create alice --email new@example.com --no-password "${users[@]}"
+  expect_output 'cli:.*user\.delete +alice' ./authelia users audit alice "${users[@]}"
+  expect_output 'cli:.*group\.create +Users' ./authelia users audit "${users[@]}"
   ./authelia storage encryption rotate hmac authentication-user --force "${users[@]}"
   expect_output 'Disabled: +true$' ./authelia users get bob "${users[@]}"
 done

@@ -64,7 +64,7 @@ func TestNewRequiresConfigAndStore(t *testing.T) {
 func TestServiceUsers(t *testing.T) {
 	service, store := newTestService(t)
 
-	ctx := context.Background()
+	ctx := WithActor(context.Background(), "test")
 
 	require.NoError(t, service.CreateGroup(ctx, "admins"))
 	require.NoError(t, service.CreateGroup(ctx, "users"))
@@ -286,7 +286,7 @@ func TestServiceRevokeUser(t *testing.T) {
 	service, err := New(&schema.AuthenticationBackendDatabase{Password: schema.DefaultCIPasswordConfig}, store, nil, sessions)
 	require.NoError(t, err)
 
-	ctx := context.Background()
+	ctx := WithActor(context.Background(), "test")
 
 	_, err = service.CreateUser(ctx, NewUser{Username: "john", Email: "john@example.com"})
 	require.NoError(t, err)

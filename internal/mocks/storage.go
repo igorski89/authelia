@@ -64,6 +64,20 @@ func (mr *MockStorageMockRecorder) AddAuthenticationUserGroup(ctx, username, gro
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddAuthenticationUserGroup", reflect.TypeOf((*MockStorage)(nil).AddAuthenticationUserGroup), ctx, username, group)
 }
 
+// AppendAdministrationAudit mocks base method.
+func (m *MockStorage) AppendAdministrationAudit(ctx context.Context, entry model.AdministrationAuditEntry) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AppendAdministrationAudit", ctx, entry)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AppendAdministrationAudit indicates an expected call of AppendAdministrationAudit.
+func (mr *MockStorageMockRecorder) AppendAdministrationAudit(ctx, entry any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendAdministrationAudit", reflect.TypeOf((*MockStorage)(nil).AppendAdministrationAudit), ctx, entry)
+}
+
 // AppendAuthenticationLog mocks base method.
 func (m *MockStorage) AppendAuthenticationLog(ctx context.Context, attempt model.AuthenticationAttempt) error {
 	m.ctrl.T.Helper()
@@ -479,6 +493,21 @@ func (mr *MockStorageMockRecorder) GetAuthenticationLogsStats(ctx any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAuthenticationLogsStats", reflect.TypeOf((*MockStorage)(nil).GetAuthenticationLogsStats), ctx)
 }
 
+// LoadAdministrationAudit mocks base method.
+func (m *MockStorage) LoadAdministrationAudit(ctx context.Context, username string, limit, page int) ([]model.AdministrationAuditEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LoadAdministrationAudit", ctx, username, limit, page)
+	ret0, _ := ret[0].([]model.AdministrationAuditEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// LoadAdministrationAudit indicates an expected call of LoadAdministrationAudit.
+func (mr *MockStorageMockRecorder) LoadAdministrationAudit(ctx, username, limit, page any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadAdministrationAudit", reflect.TypeOf((*MockStorage)(nil).LoadAdministrationAudit), ctx, username, limit, page)
+}
+
 // LoadAuthenticationGroupMembers mocks base method.
 func (m *MockStorage) LoadAuthenticationGroupMembers(ctx context.Context, name string) ([]string, error) {
 	m.ctrl.T.Helper()
@@ -507,6 +536,21 @@ func (m *MockStorage) LoadAuthenticationGroups(ctx context.Context) ([]model.Aut
 func (mr *MockStorageMockRecorder) LoadAuthenticationGroups(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadAuthenticationGroups", reflect.TypeOf((*MockStorage)(nil).LoadAuthenticationGroups), ctx)
+}
+
+// LoadAuthenticationLogs mocks base method.
+func (m *MockStorage) LoadAuthenticationLogs(ctx context.Context, username string, limit, page int) ([]model.AuthenticationAttempt, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LoadAuthenticationLogs", ctx, username, limit, page)
+	ret0, _ := ret[0].([]model.AuthenticationAttempt)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// LoadAuthenticationLogs indicates an expected call of LoadAuthenticationLogs.
+func (mr *MockStorageMockRecorder) LoadAuthenticationLogs(ctx, username, limit, page any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadAuthenticationLogs", reflect.TypeOf((*MockStorage)(nil).LoadAuthenticationLogs), ctx, username, limit, page)
 }
 
 // LoadAuthenticationUser mocks base method.

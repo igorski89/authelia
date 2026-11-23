@@ -3476,6 +3476,104 @@ paths:
           $ref: '#/components/responses/adminNotFound'
       security:
         - admin_bearer: []
+  /api/admin/audit:
+    get:
+      operationId: getAdminAudit
+      summary: List Audit
+      description: The changes made through the administration API and the CLI, newest first, of one user when a username is given.
+      tags:
+        - Administration
+      parameters:
+        - in: query
+          name: username
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Successful Operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/admin.AuditEntry'
+                  limit:
+                    type: integer
+                  page:
+                    type: integer
+        "400":
+          $ref: '#/components/responses/adminBadRequest'
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+      security:
+        - admin_bearer: []
+  /api/admin/events:
+    get:
+      operationId: getAdminEvents
+      summary: List Authentication Events
+      description: The authentication attempts, newest first, of one user when a username is given.
+      tags:
+        - Administration
+      parameters:
+        - in: query
+          name: username
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Successful Operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/admin.AuthenticationEvent'
+                  limit:
+                    type: integer
+                  page:
+                    type: integer
+        "400":
+          $ref: '#/components/responses/adminBadRequest'
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+      security:
+        - admin_bearer: []
   /api/admin/groups:
     get:
       operationId: getAdminGroups
@@ -3907,6 +4005,50 @@ components:
         password:
           type: string
         password_digest:
+          type: string
+    admin.AuditEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        time:
+          type: string
+          format: date-time
+        actor:
+          type: string
+          description: Who made the change, as client:<client id> or cli:<operating system user>.
+          example: client:agent
+        action:
+          type: string
+          enum: [user.create, user.update, user.disable, user.enable, user.delete, user.password.set, user.password.remove, user.logout, group.create, group.delete, group.member.add, group.member.remove]
+        username:
+          type: string
+        group:
+          type: string
+        details:
+          type: object
+          description: What changed, such as the names of the changed fields. Never a password or password digest.
+          additionalProperties: true
+    admin.AuthenticationEvent:
+      type: object
+      properties:
+        time:
+          type: string
+          format: date-time
+        username:
+          type: string
+        type:
+          type: string
+          example: 1FA
+        successful:
+          type: boolean
+        banned:
+          type: boolean
+        remote_ip:
+          type: string
+        request_uri:
+          type: string
+        request_method:
           type: string
     admin.Group:
       type: object
