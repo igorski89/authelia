@@ -38,6 +38,7 @@ type OpenAPIAssetTemplates struct {
 type NotificationTemplates struct {
 	jwtIdentityVerification *EmailTemplate
 	otcIdentityVerification *EmailTemplate
+	accountSetup            *EmailTemplate
 	event                   *EmailTemplate
 }
 
@@ -81,6 +82,16 @@ type EmailIdentityVerificationJWTValues struct {
 	LinkText           string
 	RevocationLinkURL  string
 	RevocationLinkText string
+}
+
+// EmailAccountSetupValues are the values used for the account setup (invite) templates.
+type EmailAccountSetupValues struct {
+	Title       string
+	DisplayName string
+	Domain      string
+	LinkURL     string
+	LinkText    string
+	Expires     string
 }
 
 // EmailIdentityVerificationOTCValues are the values used for the identity verification OTC templates.

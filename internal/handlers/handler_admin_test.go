@@ -5,9 +5,11 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"path/filepath"
 	"testing"
@@ -29,6 +31,7 @@ import (
 	"github.com/authelia/authelia/v4/internal/model"
 	"github.com/authelia/authelia/v4/internal/oidc"
 	"github.com/authelia/authelia/v4/internal/storage"
+	"github.com/authelia/authelia/v4/internal/templates"
 )
 
 const (
@@ -472,4 +475,100 @@ func TestAdminHandlersReportServerErrorsWithoutDetails(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, mock.Ctx.Response.StatusCode())
 	assert.NotContains(t, string(mock.Ctx.Response.Body()), "10.0.0.1")
 	assert.Contains(t, string(mock.Ctx.Response.Body()), `"error":"server_error"`)
+}
+
+func TestAdminUserInvitePOST(t *testing.T) {
+	service := newTestAdminService(t)
+
+	ctx := management.WithActor(context.Background(), "test")
+
+	_, err := service.CreateUser(ctx, management.NewUser{Username: "john", Email: "john@example.com", DisplayName: "John"})
+	require.NoError(t, err)
+
+	newMock := func(t *testing.T) *mocks.MockAutheliaCtx {
+		mock := mocks.NewMockAutheliaCtx(t)
+		mock.Ctx.Init(&fasthttp.Request{}, nil, nil)
+		mock.Ctx.Request.Header.Set(fasthttp.HeaderXForwardedProto, "https")
+		mock.Ctx.Request.Header.Set(fasthttp.HeaderXForwardedHost, "login.example.com:8080")
+		mock.Ctx.Configuration.IdentityValidation.ResetPassword.JWTSecret = "abc123abc123abc123abc123abc123abc123"
+		mock.Ctx.SetUserValue("username", "john")
+
+		return mock
+	}
+
+	t.Run("ShouldSendTheLinkByMailOnly", func(t *testing.T) {
+		mock := newMock(t)
+		defer mock.Close()
+
+		var sent templates.EmailAccountSetupValues
+
+		mock.NotifierMock.EXPECT().Send(gomock.Any(), gomock.Any(), "Set up your account", gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ mail.Address, _ string, _ *templates.EmailTemplate, data any) error {
+				sent = data.(templates.EmailAccountSetupValues)
+
+				return nil
+			})
+
+		mock.Ctx.Request.Header.SetContentType("application/json")
+		mock.Ctx.Request.SetBodyString(`{"lifespan":"3d"}`)
+
+		AdminUserInvitePOST(service)(mock.Ctx)
+
+		assert.Equal(t, http.StatusAccepted, mock.Ctx.Response.StatusCode(), string(mock.Ctx.Response.Body()))
+		assert.Contains(t, sent.LinkURL, "https://login.example.com:8080/account-setup?token=")
+		assert.NotContains(t, string(mock.Ctx.Response.Body()), "token")
+		assert.Contains(t, string(mock.Ctx.Response.Body()), `"expires_at"`)
+	})
+
+	t.Run("ShouldRevokeTheLinkWhenTheMailFails", func(t *testing.T) {
+		mock := newMock(t)
+		defer mock.Close()
+
+		mock.NotifierMock.EXPECT().Send(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("smtp down"))
+
+		AdminUserInvitePOST(service)(mock.Ctx)
+
+		assert.Equal(t, http.StatusInternalServerError, mock.Ctx.Response.StatusCode())
+
+		entries, err := service.ListAudit(ctx, "john", 1, 0)
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+		assert.Equal(t, management.AuditActionUserInvite, entries[0].Action)
+	})
+
+	t.Run("ShouldRefuseBadLifespan", func(t *testing.T) {
+		mock := newMock(t)
+		defer mock.Close()
+
+		mock.Ctx.Request.Header.SetContentType("application/json")
+		mock.Ctx.Request.SetBodyString(`{"lifespan":"soon"}`)
+
+		AdminUserInvitePOST(service)(mock.Ctx)
+
+		assert.Equal(t, http.StatusBadRequest, mock.Ctx.Response.StatusCode())
+	})
+
+	t.Run("ShouldRequireTheSigningSecret", func(t *testing.T) {
+		mock := newMock(t)
+		defer mock.Close()
+
+		mock.Ctx.Configuration.IdentityValidation.ResetPassword.JWTSecret = ""
+
+		AdminUserInvitePOST(service)(mock.Ctx)
+
+		assert.Equal(t, http.StatusInternalServerError, mock.Ctx.Response.StatusCode())
+	})
+}
+
+func TestAccountSetupPOSTRequiresRedeemedLink(t *testing.T) {
+	service := newTestAdminService(t)
+
+	mock := mocks.NewMockAutheliaCtx(t)
+	defer mock.Close()
+
+	mock.Ctx.Request.SetBodyString(`{"password":"a-long-password"}`)
+
+	AccountSetupPOST(service)(mock.Ctx)
+
+	assert.Contains(t, string(mock.Ctx.Response.Body()), `"status":"KO"`)
 }

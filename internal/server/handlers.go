@@ -454,6 +454,7 @@ func RegisterAdminRoutes(r *router.Router, config *schema.Configuration, provide
 	r.PUT(prefixAPIAdmin+"/users/{username}/password", write(handlers.AdminUserPasswordPUT(service)))
 	r.DELETE(prefixAPIAdmin+"/users/{username}/password", write(handlers.AdminUserPasswordDELETE(service)))
 	r.POST(prefixAPIAdmin+"/users/{username}/logout", write(handlers.AdminUserLogoutPOST(service)))
+	r.POST(prefixAPIAdmin+"/users/{username}/invite", write(handlers.AdminUserInvitePOST(service)))
 	r.PUT(prefixAPIAdmin+"/users/{username}/groups/{group}", write(handlers.AdminUserGroupPUT(service)))
 	r.DELETE(prefixAPIAdmin+"/users/{username}/groups/{group}", write(handlers.AdminUserGroupDELETE(service)))
 
@@ -464,6 +465,16 @@ func RegisterAdminRoutes(r *router.Router, config *schema.Configuration, provide
 	r.POST(prefixAPIAdmin+"/groups", write(handlers.AdminGroupsPOST(service)))
 	r.DELETE(prefixAPIAdmin+"/groups/{group}", write(handlers.AdminGroupDELETE(service)))
 	r.GET(prefixAPIAdmin+"/groups/{group}/members", read(handlers.AdminGroupMembersGET(service)))
+
+	// The portal routes which redeem an invite link, rate limited like the end of a password reset.
+	portal := middlewares.NewBridgeBuilder(*config, providers).
+		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
+		Build()
+
+	rateLimit := middlewares.NewRateLimiter(middlewares.WithRateLimitConfig(config.Server.Endpoints.RateLimits.ResetPasswordFinish), middlewares.WithRateLimitCollector(providers.GarbageCollector)).Middleware()
+
+	r.POST("/api/account-setup/identity/finish", portal(rateLimit(handlers.AccountSetupIdentityFinishPOST)))
+	r.POST("/api/account-setup", portal(rateLimit(handlers.AccountSetupPOST(service))))
 
 	return nil
 }

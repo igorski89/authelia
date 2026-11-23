@@ -6,6 +6,7 @@ import { render } from "react-email";
 import * as React from "react";
 import * as fs from "node:fs";
 
+import AccountSetup from "./emails/AccountSetup";
 import Event from "./emails/Event";
 import IdentityVerificationJWT from "./emails/IdentityVerificationJWT";
 import IdentityVerificationOTC from "./emails/IdentityVerificationOTC";
@@ -21,6 +22,28 @@ const optsTXT = {
 } as const;
 
 async function doRender() {
+    const propsAccountSetup = {
+        title: "{{ .Title }}",
+        displayName: "{{ .DisplayName }}",
+        domain: "{{ .Domain }}",
+        link: "{{ .LinkURL }}",
+        linkText: "{{ .LinkText }}",
+        expires: "{{ .Expires }}",
+    };
+
+    fs.writeFileSync(
+        "../embed/notification/AccountSetup.html",
+        await render(<AccountSetup {...propsAccountSetup} />, optsHTML),
+    );
+    fs.writeFileSync(
+        "../embed/notification/AccountSetup.txt",
+        await render(<AccountSetup {...propsAccountSetup} isPlainText={true} />, optsTXT),
+    );
+    fs.writeFileSync(
+        "../../../examples/templates/notifications/no-preview/AccountSetup.html",
+        await render(<AccountSetup {...propsAccountSetup} hidePreview={true} />, optsHTML),
+    );
+
     const propsEvent = {
         title: "{{ .Title }}",
         displayName: "{{ .DisplayName }}",

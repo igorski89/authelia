@@ -1,0 +1,21 @@
+YOU HAVE BEEN INVITED TO SET UP YOUR ACCOUNT
+
+Hi {{ .DisplayName }},
+
+An administrator has created an account for you at {{ .Domain }}. Use the one-time link below to choose a password and register a passkey.
+
+Do not share this notification or the content of this notification with anyone.
+
+----------------------------------------
+
+To set up your account, open the link below.
+
+{{ .LinkURL }}
+
+----------------------------------------
+
+This link can be used once and expires at {{ .Expires }}. If you were not expecting this invitation, you can ignore this email; ask an administrator if you need a new link.
+
+This email was intended for {{ .DisplayName }}.
+
+Powered by Authelia https://www.authelia.com

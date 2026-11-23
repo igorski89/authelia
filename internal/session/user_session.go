@@ -52,6 +52,7 @@ func (s *UserSession) RequiresPersistence() bool {
 		s.WebAuthnConditional != nil,
 		s.TOTP != nil,
 		s.PasswordResetUsername != nil,
+		s.AccountSetupUsername != nil,
 		s.Elevations.User != nil,
 		s.ExternalIdentity != nil,
 		s.ExternalIdentityPending != nil:

@@ -20,6 +20,7 @@
 	"Cancel": "Cancel",
 	"Close": "Close",
 	"Contact your administrator to register a device": "Contact your administrator to register a device",
+	"Continue": "Continue",
 	"Could not find the One-Time Password configuration": "Could not find the One-Time Password configuration",
 	"Could not obtain user settings": "Could not obtain user settings",
 	"Could not start the external login": "Could not start the external login",
@@ -81,6 +82,7 @@
 	"Security Key": "Security Key",
 	"Security Key - WebAuthn": "Security Key - WebAuthn",
 	"Select a Device": "Select a Device",
+	"Set up your account": "Set up your account",
 	"Settings": "Settings",
 	"Sign in": "Sign in",
 	"Sign in to link your account": "Sign in to link your account",
@@ -153,6 +155,7 @@
 	"You must view and accept the Privacy Policy before using {{authelia}}.": "You must view and accept the \u003cpolicy\u003ePrivacy Policy\u003c/policy\u003e before using {{authelia}}",
 	"You're being signed out and redirected": "You're being signed out and redirected",
 	"Your browser does not support the WebAuthn protocol": "Your browser does not support the WebAuthn protocol",
+	"Your password is set, now register a passkey": "Your password is set, now register a passkey",
 	"Your supplied password does not meet the password policy requirements": "Your supplied password does not meet the password policy requirements",
 	"or": "or"
 }

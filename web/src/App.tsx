@@ -10,6 +10,7 @@ import { Route, BrowserRouter as Router, Routes } from "react-router";
 
 import { TooltipProvider } from "@components/UI/Tooltip";
 import {
+    AccountSetupRoute,
     ConsentRoute,
     ErrorRoute,
     IndexRoute,
@@ -42,6 +43,7 @@ const ConsentPortal = lazy(() => import("@views/ConsentPortal/ConsentPortal"));
 const ErrorView = lazy(() => import("@views/Error/ErrorView"));
 const ResetPasswordStep1 = lazy(() => import("@views/ResetPassword/ResetPasswordStep1"));
 const ResetPasswordStep2 = lazy(() => import("@views/ResetPassword/ResetPasswordStep2"));
+const AccountSetup = lazy(() => import("@views/AccountSetup/AccountSetup"));
 const RevokeOneTimeCodeView = lazy(() => import("@views/Revoke/RevokeOneTimeCodeView"));
 const RevokeResetPasswordTokenView = lazy(() => import("@views/Revoke/RevokeResetPasswordTokenView"));
 const SettingsRouter = lazy(() => import("@views/Settings/SettingsRouter"));
@@ -79,6 +81,7 @@ function App() {
                                             <Route path={LogoutRoute} element={<SignOut />} />
                                             <Route path={ResetPasswordStep1Route} element={<ResetPasswordStep1 />} />
                                             <Route path={ResetPasswordStep2Route} element={<ResetPasswordStep2 />} />
+                                            <Route path={AccountSetupRoute} element={<AccountSetup />} />
                                             <Route path={RevokeOneTimeCodeRoute} element={<RevokeOneTimeCodeView />} />
                                             <Route
                                                 path={RevokeResetPasswordRoute}

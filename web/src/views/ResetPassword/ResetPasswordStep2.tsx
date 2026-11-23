@@ -28,8 +28,22 @@ import { ServiceError } from "@services/ServiceError";
 
 const uninitiated = Symbol("uninitiated");
 
-const ResetPasswordStep2 = function () {
+export interface Props {
+    // complete redeems the one-time link token; it defaults to completing a password reset.
+    complete?: (token: string) => Promise<unknown>;
+    // submit sets the new password; it defaults to resetting the password.
+    submit?: (password: string) => Promise<unknown>;
+    title?: string;
+    buttonText?: string;
+    successText?: string;
+    // successRoute is where to go once the password is set; it defaults to the index.
+    successRoute?: string;
+}
+
+const ResetPasswordStep2 = function (props: Props) {
     const { t: translate } = useTranslation();
+    const complete = props.complete ?? completeResetPasswordProcess;
+    const submit = props.submit ?? resetPassword;
 
     const [formDisabled, setFormDisabled] = useState(true);
     const [password1, setPassword1] = useState("");
@@ -86,7 +100,7 @@ const ResetPasswordStep2 = function () {
             }
 
             try {
-                await completeResetPasswordProcess(processToken);
+                await complete(processToken);
 
                 const policy = await getPasswordPolicyConfiguration();
                 setPPolicy(policy);
@@ -106,7 +120,7 @@ const ResetPasswordStep2 = function () {
         };
 
         submitReset().catch(console.error);
-    }, [attempt, processToken, createErrorNotification, translate, handleRateLimited]);
+    }, [attempt, processToken, createErrorNotification, translate, handleRateLimited, complete]);
 
     const doResetPassword = async () => {
         setPassword1("");
@@ -134,10 +148,10 @@ const ResetPasswordStep2 = function () {
         setFormDisabled(true);
 
         try {
-            await resetPassword(password1);
+            await submit(password1);
 
-            createSuccessNotification(translate("Password has been reset"));
-            setTimeout(() => navigate(IndexRoute), 1500);
+            createSuccessNotification(props.successText ?? translate("Password has been reset"));
+            setTimeout(() => navigate(props.successRoute ?? IndexRoute), 1500);
         } catch (err) {
             console.error(err);
             if (
@@ -162,7 +176,7 @@ const ResetPasswordStep2 = function () {
     const handleCancelClick = () => navigate(IndexRoute);
 
     return (
-        <MinimalLayout title={translate("Enter new password")} id="reset-password-step2-stage">
+        <MinimalLayout title={props.title ?? translate("Enter new password")} id="reset-password-step2-stage">
             <div id={"form-reset-password"}>
                 <div className="my-4 grid grid-cols-1 gap-4">
                     <div className="w-full">
@@ -216,7 +230,7 @@ const ResetPasswordStep2 = function () {
                                 onClick={handleResetClick}
                                 className="w-full"
                             >
-                                {translate("Reset")}
+                                {props.buttonText ?? translate("Reset")}
                             </Button>
                         </div>
                         <div className="w-full">

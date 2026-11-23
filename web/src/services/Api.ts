@@ -43,6 +43,9 @@ export const CompleteResetPasswordPath = basePath + "/api/reset-password/identit
 export const ChangePasswordPath = basePath + "/api/change-password";
 
 export const ResetPasswordPath = basePath + "/api/reset-password";
+
+export const CompleteAccountSetupPath = basePath + "/api/account-setup/identity/finish";
+export const AccountSetupPath = basePath + "/api/account-setup";
 export const ChecksSafeRedirectionPath = basePath + "/api/checks/safe-redirection";
 
 export const LogoutPath = basePath + "/api/logout";

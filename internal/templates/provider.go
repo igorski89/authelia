@@ -88,6 +88,11 @@ func (p *Provider) GetIdentityVerificationOTCEmailTemplate() (t *EmailTemplate) 
 	return p.templates.notification.otcIdentityVerification
 }
 
+// GetAccountSetupEmailTemplate returns the EmailTemplate for account setup (invite) notifications.
+func (p *Provider) GetAccountSetupEmailTemplate() (t *EmailTemplate) {
+	return p.templates.notification.accountSetup
+}
+
 // GetEventEmailTemplate returns an EmailTemplate used for generic event notifications.
 func (p *Provider) GetEventEmailTemplate() (t *EmailTemplate) {
 	return p.templates.notification.event
@@ -107,6 +112,10 @@ func (p *Provider) load() (err error) {
 
 	if p.templates.notification.otcIdentityVerification, err = loadEmailTemplate(TemplateNameEmailIdentityVerificationOTC, p.config.EmailTemplatesPath); err != nil {
 		errs = append(errs, fmt.Errorf("error occurred loading '%s' email template: %w", TemplateNameEmailIdentityVerificationOTC, err))
+	}
+
+	if p.templates.notification.accountSetup, err = loadEmailTemplate(TemplateNameEmailAccountSetup, p.config.EmailTemplatesPath); err != nil {
+		errs = append(errs, fmt.Errorf("error occurred loading '%s' email template: %w", TemplateNameEmailAccountSetup, err))
 	}
 
 	if p.templates.notification.event, err = loadEmailTemplate(TemplateNameEmailEvent, p.config.EmailTemplatesPath); err != nil {

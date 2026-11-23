@@ -3438,6 +3438,55 @@ paths:
           $ref: '#/components/responses/adminForbidden'
       security:
         - admin_bearer: []
+  /api/admin/users/{username}/invite:
+    parameters:
+      - $ref: '#/components/parameters/adminUsername'
+    post:
+      operationId: postAdminUserInvite
+      summary: Invite User
+      description: >
+        Mails the user a one-time link to set a password and register a passkey, and revokes its earlier invite links.
+        Inviting a user which already has credentials lets it set new ones, so it is recorded in the audit. The link is
+        never returned. A disabled user can't be invited.
+      tags:
+        - Administration
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lifespan:
+                  type: string
+                  description: How long the link is valid, at most 30 days.
+                  default: 72h
+                  example: 3d
+      responses:
+        "202":
+          description: Sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  username:
+                    type: string
+                  email:
+                    type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+        "400":
+          $ref: '#/components/responses/adminBadRequest'
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+        "404":
+          $ref: '#/components/responses/adminNotFound'
+      security:
+        - admin_bearer: []
   /api/admin/users/{username}/groups/{group}:
     parameters:
       - $ref: '#/components/parameters/adminUsername'
@@ -3476,6 +3525,46 @@ paths:
           $ref: '#/components/responses/adminNotFound'
       security:
         - admin_bearer: []
+  /api/account-setup/identity/finish:
+    post:
+      operationId: postAccountSetupIdentityFinish
+      summary: Redeem Invite
+      description: Redeems a one-time invite link, so the session can set the password of the invited user.
+      tags:
+        - Administration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+      responses:
+        "200":
+          description: Successful Operation (the status field reports the outcome)
+  /api/account-setup:
+    post:
+      operationId: postAccountSetup
+      summary: Set Up Account
+      description: >
+        Sets the password of the invited user whose link the session redeemed, then logs the user in with an elevated
+        session so a passkey can be registered right away.
+      tags:
+        - Administration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Successful Operation (the status field reports the outcome)
   /api/admin/audit:
     get:
       operationId: getAdminAudit
@@ -4020,7 +4109,7 @@ components:
           example: client:agent
         action:
           type: string
-          enum: [user.create, user.update, user.disable, user.enable, user.delete, user.password.set, user.password.remove, user.logout, group.create, group.delete, group.member.add, group.member.remove]
+          enum: [user.create, user.update, user.disable, user.enable, user.delete, user.password.set, user.password.remove, user.logout, user.invite, user.setup, group.create, group.delete, group.member.add, group.member.remove]
         username:
           type: string
         group:

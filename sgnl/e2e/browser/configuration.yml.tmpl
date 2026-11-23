@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 SGNL fork contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Throwaway configuration for the browser test. Every secret is a test value; the client secret is insecure_secret.
+server:
+  address: 'tcp://:9091/realms/test'
+  tls:
+    certificate: '/config/tls.crt'
+    key: '/config/tls.key'
+log:
+  level: debug
+identity_validation:
+  reset_password:
+    jwt_secret: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+authentication_backend:
+  database:
+    search:
+      email: true
+webauthn:
+  enable_passkey_login: true
+  display_name: 'Test'
+access_control:
+  default_policy: one_factor
+  rules:
+    - domain: 'secure.example.com'
+      policy: 'two_factor'
+session:
+  secret: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+  cookies:
+    - domain: 'example.com'
+      authelia_url: 'https://id.example.com:9091/realms/test'
+storage:
+  encryption_key: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+  local:
+    path: '/data/db.sqlite3'
+notifier:
+  filesystem:
+    filename: '/data/notif.txt'
+identity_providers:
+  oidc:
+    hmac_secret: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
+    jwks:
+      - key: {{ secret "/config/jwk.pem" | mindent 10 "|" | msquote }}
+    clients:
+      - client_id: 'agent'
+        client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
+        grant_types: ['client_credentials']
+        response_types: []
+        redirect_uris: []
+        scopes: ['authelia.admin.read', 'authelia.admin.write']
+        audience: ['https://id.example.com:9091/realms/test/api/admin']
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'one_factor'

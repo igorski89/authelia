@@ -52,6 +52,10 @@ type UserSession struct {
 	// PasswordResetUsername is given a value when a session exists where the password is being reset.
 	PasswordResetUsername *string `msg:"pru,omitempty"`
 
+	// AccountSetupUsername is given a value when a session exists where an invited user is setting up their account
+	// with a redeemed invite link.
+	AccountSetupUsername *string `msg:"asu,omitempty"`
+
 	RefreshTTL time.Time `msg:"ttl"`
 
 	Elevations Elevations `msg:"e"`
