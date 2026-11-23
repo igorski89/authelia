@@ -10,8 +10,6 @@ on:
     branches:
       - 'sgnl'
       - 'sgnl-*'
-    tags:
-      - 'v*-sgnl.*'
   pull_request:
     branches:
       - 'sgnl'
