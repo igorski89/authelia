@@ -68,6 +68,9 @@ Planned work that isn't started yet.
   - RFC 8693 token exchange: the gateway trades a user's token (audience = gateway) for a short-lived per-app token for
     the same user.
 
+- **Default claims policy:** Keycloak puts groups, email, name, and preferred_username in every client's ID token;
+  Authelia only does so with a `claims_policy` per client. A provider-wide default policy would remove that migration
+  trap (found in SGNL's login matrix, Grafana, 2026-11-23). Optional: a policy per client works.
 - **Docs:** reference pages for `authentication_backend.database`, the `authelia users` and `authelia groups`
   commands, and the administration API (the OpenAPI spec already documents the routes).
 
