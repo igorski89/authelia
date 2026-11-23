@@ -29,7 +29,7 @@ api.req('POST', '/api/admin/users', {'username': 'sam', 'email': 'sam@example.co
 
 # Metadata.
 st, h, metadata = api.req('GET', '/api/saml/metadata')
-check('metadata is served', st == 200 and 'EntityDescriptor' in metadata, metadata[:200])
+check('metadata is served as XML', st == 200 and 'EntityDescriptor' in metadata and 'xml' in h.get('Content-Type', ''), h.get('Content-Type'))
 check('the entity ID is the issuer', f'entityID="{ISS}"' in metadata, metadata[:300])
 check('the SSO URL is the Keycloak path (enable_keycloak_endpoints)', f'Location="{ISS}/protocol/saml"' in metadata)
 
@@ -133,6 +133,8 @@ result = deliver('sp1', page)
 check('the service provider accepts the response, NameID = email',
       result.get('name_id') == 'sam@example.com' and result.get('name_id_format', '').endswith('emailAddress'), result)
 check('RelayState comes back unchanged', result.get('relay_state') == 'relay-1', result)
+signed = base64.b64decode(html.unescape(re.search(r'name="SAMLResponse" value="([^"]*)"', page).group(1))).decode()
+check('sign both: the response and the assertion are signed', signed.count('SignatureValue>') == 4, signed.count('SignatureValue>'))
 check('the configured attributes are released', result.get('attributes', {}).get('groups') == ['staff']
       and result.get('attributes', {}).get('email') == ['sam@example.com'], result)
 
@@ -154,6 +156,9 @@ check('a one-factor session is sent to the portal for a two-factor service provi
 
 st, _, b = user.req('POST', '/api/firstfactor', {'username': 'sam', 'password': 'a-long-password-5', 'flow': 'saml', 'flowID': fid2})
 check('after the first factor the portal asks for the second factor', st == 200 and 'redirect' not in b, b)
+
+st, h, _ = user.req('GET', f'/api/saml/sso/resume?flow_id={fid2}')
+check('resuming with an insufficient session is refused, not sent to the portal again (no loop)', st == 403, f'{st} {h.get("Location")}')
 
 # Signed requests.
 st, _, page = send_request(user, 'sp3', sign=False)

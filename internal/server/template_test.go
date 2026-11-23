@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/authelia/authelia/v4/internal/configuration/schema"
 	"github.com/authelia/authelia/v4/internal/middlewares"
@@ -705,5 +706,43 @@ func (lfs *ReadFilePortalIndex) ReadFile(name string) ([]byte, error) {
 		return []byte(tmplTestPortalIndex), nil
 	default:
 		return assets.ReadFile(name)
+	}
+}
+
+func TestShouldTemplateOpenAPIWithSAMLAndAdmin(t *testing.T) {
+	provider, err := templates.New(templates.Config{})
+	require.NoError(t, err)
+
+	require.NoError(t, provider.LoadTemplatedAssets(&ReadFileOpenAPI{}))
+
+	mock := mocks.NewMockAutheliaCtx(t)
+
+	mock.Ctx.Configuration.Server = schema.DefaultServerConfiguration
+	mock.Ctx.Configuration.Session = schema.Session{Cookies: []schema.SessionCookie{{Domain: "example.com"}}}
+	mock.Ctx.Configuration.IdentityProviders.OIDC = &schema.IdentityProvidersOpenIDConnect{}
+	mock.Ctx.Configuration.IdentityProviders.SAML = &schema.IdentityProvidersSAML{}
+	mock.Ctx.Configuration.AuthenticationBackend.Database = &schema.AuthenticationBackendDatabase{}
+
+	mock.ResetSessionProvider()
+
+	handler := ServeTemplatedOpenAPI(provider.GetAssetOpenAPISpecTemplate(), NewTemplatedFileOptions(&mock.Ctx.Configuration))
+
+	mock.Ctx.Request.Header.Set(fasthttp.HeaderXForwardedProto, "https")
+	mock.Ctx.Request.Header.Set(fasthttp.HeaderXForwardedHost, "auth.example.com")
+	mock.Ctx.Request.Header.Set("X-Forwarded-URI", "/api/openapi.yml")
+
+	handler(mock.Ctx)
+
+	require.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+
+	spec := map[string]any{}
+
+	require.NoError(t, yaml.Unmarshal(mock.Ctx.Response.Body(), &spec))
+
+	paths, ok := spec["paths"].(map[string]any)
+	require.True(t, ok)
+
+	for _, path := range []string{"/api/saml/metadata", "/api/saml/sso", "/api/saml/sso/resume", "/api/admin/users"} {
+		assert.Contains(t, paths, path)
 	}
 }

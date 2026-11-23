@@ -43,6 +43,10 @@ const (
 
 type ctxKeySAMLAutheliaCtx struct{}
 
+// ctxKeySAMLResumed marks a request resumed after login. Its session was judged sufficient before, so an insufficient
+// one gets an error rather than another trip through the portal, which could loop.
+type ctxKeySAMLResumed struct{}
+
 // SAMLMetadataGET serves the metadata of the SAML 2.0 identity provider.
 func SAMLMetadataGET(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *http.Request) {
 	idp, ok := samlIdentityProvider(ctx, rw)
@@ -91,7 +95,7 @@ func SAMLSSOResumeGET(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *h
 		return
 	}
 
-	resume, err := http.NewRequestWithContext(context.WithValue(r.Context(), ctxKeySAMLAutheliaCtx{}, ctx), http.MethodPost, idp.SSOURL.String(), strings.NewReader(form.Encode()))
+	resume, err := http.NewRequestWithContext(context.WithValue(context.WithValue(r.Context(), ctxKeySAMLAutheliaCtx{}, ctx), ctxKeySAMLResumed{}, true), http.MethodPost, idp.SSOURL.String(), strings.NewReader(form.Encode()))
 	if err != nil {
 		http.Error(rw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 
@@ -165,6 +169,13 @@ func (samlSessions) GetSession(rw http.ResponseWriter, r *http.Request, req *sam
 	// A request with ForceAuthn is answered with AuthnFailed by the library, as this session provider can't
 	// authenticate the user again without a login form of its own.
 	if userSession.IsAnonymous() || !authorization.IsAuthLevelSufficient(level, samlRequiredLevel(sp)) {
+		if resumed, _ := r.Context().Value(ctxKeySAMLResumed{}).(bool); resumed {
+			ctx.GetLogger().WithField(logging.FieldUsername, userSession.Username).Error("Failed to resume a SAML authentication request as the session doesn't satisfy the authorization policy of the service provider")
+			http.Error(rw, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+
+			return nil
+		}
+
 		samlLoginRedirect(ctx, rw, r, req, sp)
 
 		return nil

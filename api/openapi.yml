@@ -65,6 +65,13 @@ tags:
       carry an OAuth 2.0 Access Token issued with the client credentials grant, granted the audience of the issuer
       followed by /api/admin, and the authelia.admin.read scope (reads) or the authelia.admin.write scope (changes).
   {{- end }}
+  {{- if .SAML }}
+  - name: SAML 2.0
+    description: >
+      SAML 2.0 Identity Provider Endpoints (service provider initiated single sign-on). With
+      enable_keycloak_endpoints the metadata and single sign-on endpoints are also served at /protocol/saml/descriptor
+      and /protocol/saml, which the metadata then publishes.
+  {{- end }}
   {{- if .OpenIDConnect }}
   - name: OAuth 2.0
     description: OAuth 2.0 Endpoints
@@ -2210,6 +2217,123 @@ paths:
                 $ref: '#/components/schemas/middlewares.Response.KO'
       security:
         - authelia_auth: []
+  {{- end }}
+  {{- if .SAML }}
+  /api/saml/metadata:
+    get:
+      operationId: getSAMLMetadata
+      summary: SAML 2.0 Identity Provider Metadata
+      description: The SAML 2.0 metadata of the identity provider, with its signing certificate and endpoints.
+      tags:
+        - SAML 2.0
+      responses:
+        "200":
+          description: OK
+          content:
+            application/samlmetadata+xml:
+              schema:
+                type: string
+        "404":
+          description: Not Found (the issuer is not a configured authelia_url)
+  /api/saml/sso:
+    get:
+      operationId: getSAMLSingleSignOn
+      summary: SAML 2.0 Single Sign-On (HTTP-Redirect binding)
+      description: >
+        Receives an authentication request of a registered service provider. A user whose session satisfies its
+        authorization policy gets a page which posts the response to the assertion consumer service; otherwise the user
+        is sent to the portal with the flow, which resumes the request after login.
+      tags:
+        - SAML 2.0
+      parameters:
+        - name: SAMLRequest
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: RelayState
+          in: query
+          schema:
+            type: string
+        - name: SigAlg
+          in: query
+          schema:
+            type: string
+        - name: Signature
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The response form, posted to the service provider by the browser
+          content:
+            text/html:
+              schema:
+                type: string
+        "303":
+          description: See Other (to the portal, to log in)
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+    post:
+      operationId: postSAMLSingleSignOn
+      summary: SAML 2.0 Single Sign-On (HTTP-POST binding)
+      description: As the HTTP-Redirect binding, with the request in a form.
+      tags:
+        - SAML 2.0
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - SAMLRequest
+              properties:
+                SAMLRequest:
+                  type: string
+                RelayState:
+                  type: string
+      responses:
+        "200":
+          description: The response form, posted to the service provider by the browser
+          content:
+            text/html:
+              schema:
+                type: string
+        "303":
+          description: See Other (to the portal, to log in)
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+  /api/saml/sso/resume:
+    get:
+      operationId: getSAMLSingleSignOnResume
+      summary: SAML 2.0 Single Sign-On Resume
+      description: >
+        Resumes the authentication request of a flow after login. The portal sends the user here; a flow can be resumed
+        once, and only with a session which satisfies the authorization policy of the service provider.
+      tags:
+        - SAML 2.0
+      parameters:
+        - name: flow_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The response form, posted to the service provider by the browser
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Bad Request (unknown, expired, or used flow)
+        "403":
+          description: Forbidden (the session doesn't satisfy the authorization policy)
   {{- end }}
   {{- if .OpenIDConnect }}
   /.well-known/openid-configuration:

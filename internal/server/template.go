@@ -250,6 +250,7 @@ func NewTemplatedFileOptions(config *schema.Configuration) (opts *TemplatedFileO
 		EndpointsRecoveryCodes:  !config.RecoveryCodes.Disable,
 		EndpointsOpenIDConnect:  config.IdentityProviders.OIDC != nil,
 		EndpointsAdmin:          config.IdentityProviders.OIDC != nil,
+		EndpointsSAML:           config.IdentityProviders.SAML != nil,
 		EndpointsAdminUsers:     config.IdentityProviders.OIDC != nil && config.AuthenticationBackend.Database != nil,
 		EndpointsHealthVerbose:  config.Server.Endpoints.Health.Verbose,
 		EndpointsAuthz:          config.Server.Endpoints.Authz,
@@ -304,6 +305,7 @@ type TemplatedFileOptions struct {
 	EndpointsOpenIDConnect  bool
 	EndpointsHealthVerbose  bool
 	EndpointsAdmin          bool
+	EndpointsSAML           bool
 	EndpointsAdminUsers     bool
 
 	EndpointsAuthz map[string]schema.ServerEndpointsAuthz
@@ -368,6 +370,7 @@ func (options *TemplatedFileOptions) OpenAPIData(base, baseURL, domain, cookie, 
 		OpenIDConnect:  options.EndpointsOpenIDConnect,
 		HealthVerbose:  options.EndpointsHealthVerbose,
 		Admin:          options.EndpointsAdmin,
+		SAML:           options.EndpointsSAML,
 		AdminUsers:     options.EndpointsAdminUsers,
 		EndpointsAuthz: options.EndpointsAuthz,
 	}
@@ -413,6 +416,7 @@ type TemplatedFileOpenAPIData struct {
 	OpenIDConnect  bool
 	HealthVerbose  bool
 	Admin          bool
+	SAML           bool
 	AdminUsers     bool
 
 	EndpointsAuthz map[string]schema.ServerEndpointsAuthz
