@@ -422,10 +422,10 @@ func handlerMain(config *schema.Configuration, providers middlewares.Providers) 
 func RegisterAdminRoutes(r *router.Router, config *schema.Configuration, providers middlewares.Providers) {
 	middlewareAdminRead := middlewares.NewBridgeBuilder(*config, providers).
 		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore, middlewares.SecurityHeadersCSPNone).
-		WithPostMiddlewares(middlewares.RequireBearerClientCredentials(oidc.ScopeAutheliaAdminRead)).
+		WithPostMiddlewares(middlewares.RequireBearerClientCredentials(prefixAPIAdmin, oidc.ScopeAutheliaAdminRead)).
 		Build()
 
-	r.GET("/api/admin/whoami", middlewareAdminRead(handlers.AdminWhoAmIGET))
+	r.GET(prefixAPIAdmin+"/whoami", middlewareAdminRead(handlers.AdminWhoAmIGET))
 }
 
 // RegisterOpenIDConnectRoutes handles registration of OpenID Connect 1.0 routes.

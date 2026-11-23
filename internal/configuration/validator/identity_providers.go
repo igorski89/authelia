@@ -806,6 +806,8 @@ func validateOIDCClient(ctx *ValidateCtx, c int, config *schema.IdentityProvider
 
 	setDefaults := validateOIDCClientScopesSpecialBearerAuthz(c, config, ccg, validator)
 
+	validateOIDCClientScopesSpecialAdmin(c, config, validator)
+
 	validateOIDCClientConsentMode(c, config, validator, setDefaults)
 
 	validateOIDCClientScopes(c, config, validator, ccg, errDeprecatedFunc)
@@ -1265,6 +1267,43 @@ func validateOIDCClientScopesSpecialBearerAuthz(c int, config *schema.IdentityPr
 	}
 
 	return false
+}
+
+// validateOIDCClientScopesSpecialAdmin validates a client permitted to use the administration API. Such a client acts
+// as itself rather than on behalf of a user: it must be confidential, use only the client credentials grant, request
+// only the administration scopes, and be granted an audience or resource identifying the administration API.
+func validateOIDCClientScopesSpecialAdmin(c int, config *schema.IdentityProvidersOpenIDConnect, validator *schema.StructValidator) {
+	var scope string
+
+	for _, s := range validOIDCClientScopesAdmin {
+		if utils.IsStringInSlice(s, config.Clients[c].Scopes) {
+			scope = s
+
+			break
+		}
+	}
+
+	if scope == "" {
+		return
+	}
+
+	if invalid, _ := validateList(config.Clients[c].Scopes, validOIDCClientScopesAdmin, false); len(invalid) != 0 {
+		validator.Push(fmt.Errorf(errFmtOIDCClientInvalidEntriesScope, config.Clients[c].ID, attrOIDCScopes, utils.StringJoinAnd(validOIDCClientScopesAdmin), scope, utils.StringJoinAnd(invalid)))
+	}
+
+	if len(config.Clients[c].GrantTypes) == 0 {
+		validator.Push(fmt.Errorf(errFmtOIDCClientEmptyEntriesScope, config.Clients[c].ID, attrOIDCGrantTypes, utils.StringJoinAnd(validOIDCClientGrantTypesAdmin), scope))
+	} else if invalid, _ := validateList(config.Clients[c].GrantTypes, validOIDCClientGrantTypesAdmin, false); len(invalid) != 0 {
+		validator.Push(fmt.Errorf(errFmtOIDCClientInvalidEntriesScope, config.Clients[c].ID, attrOIDCGrantTypes, utils.StringJoinAnd(validOIDCClientGrantTypesAdmin), scope, utils.StringJoinAnd(invalid)))
+	}
+
+	if config.Clients[c].Public {
+		validator.Push(fmt.Errorf(errFmtOIDCClientOptionMustScope, config.Clients[c].ID, "public", "'false'", scope, "true"))
+	}
+
+	if len(config.Clients[c].Audience) == 0 && len(config.Clients[c].Resource) == 0 {
+		validator.Push(fmt.Errorf(errFmtOIDCClientOptionRequiredEitherScope, config.Clients[c].ID, attrOIDCAudience, attrOIDCResource, scope))
+	}
 }
 
 func validateOIDCClientScopesClientCredentialsGrant(c int, config *schema.IdentityProvidersOpenIDConnect, validator *schema.StructValidator) {

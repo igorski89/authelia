@@ -1744,7 +1744,7 @@ func TestValidateOIDCClients(t *testing.T) {
 				[]string{oidc.GrantTypeAuthorizationCode},
 			},
 			[]string{
-				"identity_providers: oidc: clients: client 'test': option 'scopes' only expects the values 'openid', 'email', 'profile', 'address', 'phone', 'groups', 'offline_access', 'offline', or 'authelia.bearer.authz' but the unknown values 'group' are present and should generally only be used if a particular client requires a scope outside of our standard scopes",
+				"identity_providers: oidc: clients: client 'test': option 'scopes' only expects the values 'openid', 'email', 'profile', 'address', 'phone', 'groups', 'offline_access', 'offline', 'authelia.bearer.authz', 'authelia.admin.read', or 'authelia.admin.write' but the unknown values 'group' are present and should generally only be used if a particular client requires a scope outside of our standard scopes",
 			},
 			nil,
 		},
@@ -6714,6 +6714,87 @@ func TestValidateOIDCClientIntrospectionAudience(t *testing.T) {
 
 			for i, err := range tc.errors {
 				assert.EqualError(t, validator.Errors()[i], err)
+			}
+		})
+	}
+}
+
+func TestValidateOIDCClientScopesSpecialAdmin(t *testing.T) {
+	testCases := []struct {
+		name     string
+		client   schema.IdentityProvidersOpenIDConnectClient
+		expected []string
+	}{
+		{
+			"ShouldIgnoreClientWithoutAdminScopes",
+			schema.IdentityProvidersOpenIDConnectClient{
+				ID:         "abc",
+				Public:     true,
+				Scopes:     []string{oidc.ScopeOpenID},
+				GrantTypes: []string{oidc.GrantTypeAuthorizationCode},
+			},
+			nil,
+		},
+		{
+			"ShouldAllowClientCredentialsClient",
+			schema.IdentityProvidersOpenIDConnectClient{
+				ID:         "abc",
+				Scopes:     []string{oidc.ScopeAutheliaAdminRead, oidc.ScopeAutheliaAdminWrite},
+				GrantTypes: []string{oidc.GrantTypeClientCredentials},
+				Audience:   []string{"https://auth.example.com/api/admin"},
+			},
+			nil,
+		},
+		{
+			"ShouldAllowResourceInsteadOfAudience",
+			schema.IdentityProvidersOpenIDConnectClient{
+				ID:         "abc",
+				Scopes:     []string{oidc.ScopeAutheliaAdminWrite},
+				GrantTypes: []string{oidc.GrantTypeClientCredentials},
+				Resource:   []string{"https://auth.example.com/api/admin"},
+			},
+			nil,
+		},
+		{
+			"ShouldRaiseErrorsForUserFacingClient",
+			schema.IdentityProvidersOpenIDConnectClient{
+				ID:         "abc",
+				Public:     true,
+				Scopes:     []string{oidc.ScopeOpenID, oidc.ScopeAutheliaAdminRead},
+				GrantTypes: []string{oidc.GrantTypeAuthorizationCode, oidc.GrantTypeClientCredentials},
+			},
+			[]string{
+				"identity_providers: oidc: clients: client 'abc': option 'scopes' must only have the values 'authelia.admin.read' and 'authelia.admin.write' when configured with scope 'authelia.admin.read' but the values 'openid' are present",
+				"identity_providers: oidc: clients: client 'abc': option 'grant_types' must only have the values 'client_credentials' when configured with scope 'authelia.admin.read' but the values 'authorization_code' are present",
+				"identity_providers: oidc: clients: client 'abc': option 'public' must be configured as 'false' when configured with scope 'authelia.admin.read' but it's configured as 'true'",
+				"identity_providers: oidc: clients: client 'abc': option 'audience' or option 'resource' must be configured when configured with scope 'authelia.admin.read' but both are absent",
+			},
+		},
+		{
+			"ShouldRaiseErrorForMissingGrantTypes",
+			schema.IdentityProvidersOpenIDConnectClient{
+				ID:       "abc",
+				Scopes:   []string{oidc.ScopeAutheliaAdminWrite},
+				Audience: []string{"https://auth.example.com/api/admin"},
+			},
+			[]string{
+				"identity_providers: oidc: clients: client 'abc': option 'grant_types' must only have the values 'client_credentials' when configured with scope 'authelia.admin.write' but it's not configured",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			config := &schema.IdentityProvidersOpenIDConnect{Clients: []schema.IdentityProvidersOpenIDConnectClient{tc.client}}
+			validator := schema.NewStructValidator()
+
+			validateOIDCClientScopesSpecialAdmin(0, config, validator)
+
+			assert.Len(t, validator.Warnings(), 0)
+			require.Len(t, validator.Errors(), len(tc.expected))
+
+			for i, expected := range tc.expected {
+				assert.EqualError(t, validator.Errors()[i], expected)
 			}
 		})
 	}

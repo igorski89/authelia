@@ -65,6 +65,10 @@ const (
 	strFalse  = "false"
 	strTrue   = "true"
 	prefixAPI = "/api/"
+
+	// prefixAPIAdmin is the administration API prefix. Joined to the issuer it is also the audience its Access Tokens
+	// must be granted.
+	prefixAPIAdmin = "/api/admin"
 )
 
 var (

@@ -772,7 +772,7 @@ var (
 	validOIDCReservedCustomizableScopes      = []string{oidc.ScopeAutheliaPAM}
 	validOIDCReservedIDTokenClaims           = []string{oidc.ClaimJWTID, oidc.ClaimAuthorizedParty, oidc.ClaimScope, oidc.ClaimIssuer, oidc.ClaimSubject, oidc.ClaimAudience, oidc.ClaimSessionID, oidc.ClaimStateHash, oidc.ClaimCodeHash, oidc.ClaimIssuedAt, oidc.ClaimNotBefore, oidc.ClaimExpirationTime, oidc.ClaimAuthenticationTime, oidc.ClaimAuthenticationMethodsReference, oidc.ClaimAuthenticationContextClassReference, oidc.ClaimNonce}
 	validOIDCClientClaims                    = []string{oidc.ClaimFullName, oidc.ClaimGivenName, oidc.ClaimFamilyName, oidc.ClaimMiddleName, oidc.ClaimNickname, oidc.ClaimPreferredUsername, oidc.ClaimProfile, oidc.ClaimPicture, oidc.ClaimWebsite, oidc.ClaimEmail, oidc.ClaimEmailVerified, oidc.ClaimGender, oidc.ClaimBirthdate, oidc.ClaimZoneinfo, oidc.ClaimLocale, oidc.ClaimPhoneNumber, oidc.ClaimPhoneNumberVerified, oidc.ClaimAddress, oidc.ClaimGroups, oidc.ClaimEmailAlts, oidc.ClaimRequestedAt, oidc.ClaimUpdatedAt}
-	validOIDCClientScopes                    = []string{oidc.ScopeOpenID, oidc.ScopeEmail, oidc.ScopeProfile, oidc.ScopeAddress, oidc.ScopePhone, oidc.ScopeGroups, oidc.ScopeOfflineAccess, oidc.ScopeOffline, oidc.ScopeAutheliaBearerAuthz}
+	validOIDCClientScopes                    = []string{oidc.ScopeOpenID, oidc.ScopeEmail, oidc.ScopeProfile, oidc.ScopeAddress, oidc.ScopePhone, oidc.ScopeGroups, oidc.ScopeOfflineAccess, oidc.ScopeOffline, oidc.ScopeAutheliaBearerAuthz, oidc.ScopeAutheliaAdminRead, oidc.ScopeAutheliaAdminWrite}
 	validOIDCClientConsentModes              = []string{auto, oidc.ClientConsentModeImplicit.String(), oidc.ClientConsentModeExplicit.String(), oidc.ClientConsentModePreConfigured.String()}
 	validOIDCClientResponseModes             = []string{oidc.ResponseModeFormPost, oidc.ResponseModeQuery, oidc.ResponseModeFragment, oidc.ResponseModeJWT, oidc.ResponseModeFormPostJWT, oidc.ResponseModeQueryJWT, oidc.ResponseModeFragmentJWT}
 	validOIDCClientResponseTypes             = []string{oidc.ResponseTypeAuthorizationCodeFlow, oidc.ResponseTypeImplicitFlowIDToken, oidc.ResponseTypeImplicitFlowToken, oidc.ResponseTypeImplicitFlowBoth, oidc.ResponseTypeHybridFlowIDToken, oidc.ResponseTypeHybridFlowToken, oidc.ResponseTypeHybridFlowBoth}
@@ -794,6 +794,9 @@ var (
 	validOIDCClientResponseModesBearerAuthz = []string{oidc.ResponseModeFormPost, oidc.ResponseModeFormPostJWT}
 	validOIDCClientResponseTypesBearerAuthz = []string{oidc.ResponseTypeAuthorizationCodeFlow}
 	validOIDCClientGrantTypesBearerAuthz    = []string{oidc.GrantTypeAuthorizationCode, oidc.GrantTypeRefreshToken, oidc.GrantTypeClientCredentials}
+
+	validOIDCClientScopesAdmin     = []string{oidc.ScopeAutheliaAdminRead, oidc.ScopeAutheliaAdminWrite}
+	validOIDCClientGrantTypesAdmin = []string{oidc.GrantTypeClientCredentials}
 )
 
 const (

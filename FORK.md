@@ -45,6 +45,7 @@ Every feature the fork adds or changes, with the upstream files it touches. Each
 | Feature | Upstream files changed | Since |
 |---|---|---|
 | Multi-segment server path (`server.address` path such as `/realms/<realm>`, keeps Keycloak's issuer) | `internal/configuration/validator/{server.go,const.go,server_test.go}`, `internal/configuration/provider_test.go`, `internal/middlewares/strip_path_test.go` | 2026-11-23 |
+| Admin API authorization: scopes `authelia.admin.read` / `authelia.admin.write`; middleware `RequireBearerClientCredentials` admits only client-credentials Access Tokens with the route's scope and the audience `<issuer>/api/admin`; validator requires such clients to be confidential, `client_credentials`-only, admin-scopes-only, with an audience or resource; first route `GET /api/admin/whoami` | `internal/oidc/const.go`, `internal/middlewares/{require_bearer.go,const.go}`, `internal/handlers/{handler_admin.go,handler_admin_test.go}`, `internal/server/{handlers.go,const.go}`, `internal/configuration/validator/{identity_providers.go,const.go,identity_providers_test.go}` | 2026-11-23 |
 
 Fork-only build files: `FORK.md`, `sgnl/` (image), `.github/workflows/sgnl-*.yml`, `.github/actions/sgnl-checkout/`.
 

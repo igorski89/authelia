@@ -17,22 +17,24 @@ import (
 	"github.com/authelia/authelia/v4/internal/oidc"
 )
 
-// RequireBearerClientCredentials permits a request only when it carries an OAuth 2.0 Access Token issued by this server
-// with the client credentials grant, granted the given scope, to a client which is still registered with that scope.
-// The client identifier is stored on the context for the next handler (see [AutheliaCtx.BearerClientID]).
-func RequireBearerClientCredentials(scope string) AutheliaMiddleware {
+// RequireBearerClientCredentials permits a request only when it carries an OAuth 2.0 Access Token which this server
+// issued with the client credentials grant, granted the given scope and the audience (or resource) formed by joining
+// the issuer with the given path, to a client which is still registered with that scope and audience. The client
+// identifier is stored on the context for the next handler (see [AutheliaCtx.BearerClientID]).
+func RequireBearerClientCredentials(path, scope string) AutheliaMiddleware {
 	return func(next RequestHandler) RequestHandler {
 		return func(ctx *AutheliaCtx) {
-			if clientID, rfc := bearerClientCredentials(ctx, scope); rfc != nil {
+			clientID, rfc := bearerClientCredentials(ctx, path, scope)
+			if rfc != nil {
 				ctx.Logger.WithFields(map[string]any{"client_id": clientID, "scope": scope}).
 					Errorf("Bearer authorization was refused: %s", oauthelia2.ErrorToDebugRFC6749Error(rfc))
 
 				replyBearerError(ctx, scope, rfc)
 
 				return
-			} else {
-				ctx.SetUserValue(UserValueKeyBearerClientID, clientID)
 			}
+
+			ctx.SetUserValue(UserValueKeyBearerClientID, clientID)
 
 			next(ctx)
 		}
@@ -48,7 +50,7 @@ func (ctx *AutheliaCtx) BearerClientID() string {
 	return ""
 }
 
-func bearerClientCredentials(ctx *AutheliaCtx, scope string) (clientID string, rfc *oauthelia2.RFC6749Error) {
+func bearerClientCredentials(ctx *AutheliaCtx, path, scope string) (clientID string, rfc *oauthelia2.RFC6749Error) {
 	if ctx.Providers.OpenIDConnect == nil {
 		return "", oauthelia2.ErrServerError.WithDebug("The OpenID Connect 1.0 provider is not configured.")
 	}
@@ -99,6 +101,15 @@ func bearerClientCredentials(ctx *AutheliaCtx, scope string) (clientID string, r
 
 	if !client.GetScopes().Has(scope) || !requester.GetGrantedScopes().Has(scope) {
 		return clientID, oauthelia2.ErrInsufficientScope.WithHintf("The Access Token was not granted the '%s' scope.", scope)
+	}
+
+	audience := []string{issuer.JoinPath(path).String()}
+
+	strategyAudience, strategyResource := oauthelia2.GetAudienceStrategy(ctx, ctx.Providers.OpenIDConnect, client), oauthelia2.GetResourceStrategy(ctx, ctx.Providers.OpenIDConnect, client)
+
+	if !oidc.AudienceMatchesRequester(strategyAudience, strategyResource, requester, audience) ||
+		!oidc.AudienceMatchesGrantedAudienceOrResource(strategyAudience, client.GetAudience(), strategyResource, client.GetResource(), audience) {
+		return clientID, errBearerTokenInvalid.WithHintf("The Access Token was not issued for the audience '%s'.", audience[0])
 	}
 
 	return clientID, nil
