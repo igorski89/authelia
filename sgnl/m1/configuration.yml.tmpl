@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 SGNL fork contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Throwaway test configuration template for sgnl/m1/exit_test.py. Every secret here is a test value. Client secrets are
+# insecure_secret. ${DIR} is replaced by the run script.
+---
+server:
+  address: 'tcp://127.0.0.1:9091/realms/test'
+log:
+  level: debug
+  file_path: '${DIR}/authelia.log'
+identity_validation:
+  reset_password:
+    jwt_secret: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+authentication_backend:
+  database:
+    search:
+      email: true
+password_policy:
+  standard:
+    enabled: true
+    min_length: 10
+access_control:
+  default_policy: one_factor
+session:
+  secret: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+  cookies:
+    - domain: 'example.com'
+      authelia_url: 'https://id.example.com/realms/test'
+storage:
+  encryption_key: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+  local:
+    path: '${DIR}/db.sqlite3'
+notifier:
+  filesystem:
+    filename: '${DIR}/notif.txt'
+identity_providers:
+  oidc:
+    hmac_secret: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
+    jwks:
+      - key: {{ secret "${DIR}/jwk.pem" | mindent 10 "|" | msquote }}
+    claims_policies:
+      app_groups:
+        id_token: ['email', 'email_verified', 'name', 'preferred_username', 'groups']
+    clients:
+      - client_id: 'app'
+        client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
+        redirect_uris: ['https://app.example.com/cb']
+        scopes: ['openid', 'profile', 'email', 'groups', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        claims_policy: 'app_groups'
+        access_token_signed_response_alg: 'RS256'
+        authorization_policy: 'one_factor'
+      - client_id: 'test'
+        client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
+        redirect_uris: ['https://app.example.com/cb']
+        scopes: ['openid', 'profile', 'email', 'groups', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        authorization_policy: 'one_factor'
+        consent_mode: 'implicit'
+      - client_id: 'agent'
+        client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
+        grant_types: ['client_credentials']
+        response_types: []
+        redirect_uris: []
+        scopes: ['authelia.admin.read', 'authelia.admin.write']
+        audience: ['https://id.example.com/realms/test/api/admin']
+        token_endpoint_auth_method: 'client_secret_basic'
+        authorization_policy: 'one_factor'
+...

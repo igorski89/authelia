@@ -98,6 +98,23 @@ jobs:
           AUTHELIA_STORAGE_ENCRYPTION_KEY: 'a-throwaway-storage-encryption-key-for-ci-only-0123456789'
         run: 'sgnl/ci-storage-engines.sh'
 
+  m1-exit-test:
+    name: 'M1 exit test (admin API and login)'
+    runs-on: 'ubuntu-latest'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/sgnl-checkout
+        with:
+          merge_upstream: '${{ env.MERGE_UPSTREAM }}'
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5  # v7.1.0
+        with:
+          go-version-file: 'go.mod'
+      - name: 'Run the M1 exit test'
+        run: 'sgnl/m1/run.sh'
+
   go-lint:
     name: 'Go lint'
     runs-on: 'ubuntu-latest'
