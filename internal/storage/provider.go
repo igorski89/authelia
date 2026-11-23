@@ -139,6 +139,15 @@ type Provider interface {
 	// yet, used or not, and its pending one-time codes, or only the identity verification links of the given action.
 	RevokeIdentityVerificationsByUsername(ctx context.Context, username, action string) (revoked int64, err error)
 
+	// SaveWebAuthnCredentialImported marks a WebAuthn credential as imported with unknown backup flags.
+	SaveWebAuthnCredentialImported(ctx context.Context, kid, source string) (err error)
+
+	// IsWebAuthnCredentialImported returns true if a WebAuthn credential is marked as imported with unknown flags.
+	IsWebAuthnCredentialImported(ctx context.Context, kid string) (imported bool, err error)
+
+	// DeleteWebAuthnCredentialImported removes the import mark of a WebAuthn credential.
+	DeleteWebAuthnCredentialImported(ctx context.Context, kid string) (err error)
+
 	// SaveSAMLFlow saves a SAML authentication request which waits for the user to log in.
 	SaveSAMLFlow(ctx context.Context, flow model.SAMLFlow) (err error)
 

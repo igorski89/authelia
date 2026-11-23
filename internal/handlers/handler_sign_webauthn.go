@@ -217,6 +217,17 @@ func WebAuthnAssertionPOST(ctx *middlewares.AutheliaCtx) {
 		return
 	}
 
+	var adopted string
+
+	if adopted, err = handleWebAuthnAdoptImportedFlags(ctx, user.Credentials, response); err != nil {
+		ctx.Logger.WithError(err).Errorf("Error occurred validating a WebAuthn authentication challenge for user '%s': error occurred checking the credential import mark", userSession.Username)
+
+		ctx.SetStatusCode(fasthttp.StatusForbidden)
+		ctx.SetJSONError(messageMFAValidationFailed)
+
+		return
+	}
+
 	if c, err = provider.ValidateLogin(user, *userSession.WebAuthn.SessionData, response); err != nil {
 		doMarkAuthenticationAttempt(ctx, false, regulation.NewBan(regulation.BanTypeNone, userSession.Username, nil), regulation.AuthTypeWebAuthn, webauthn.FormatError(err))
 
@@ -250,6 +261,8 @@ func WebAuthnAssertionPOST(ctx *middlewares.AutheliaCtx) {
 
 				return
 			}
+
+			handleWebAuthnImportedFlagsSaved(ctx, adopted)
 
 			break
 		}

@@ -535,7 +535,7 @@ func TestWebAuthnHandlerDiscoverableLogin(t *testing.T) {
 
 			tc.setup(t, mock)
 
-			handler := handlerWebAuthnDiscoverableLogin(mock.Ctx, "https://example.com")
+			handler := handlerWebAuthnDiscoverableLogin(mock.Ctx, "https://example.com", nil, new(string))
 
 			actual, err := handler([]byte("example"), []byte("example"))
 			if len(tc.err) > 0 {

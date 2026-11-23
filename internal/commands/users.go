@@ -12,7 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/user"
+	"sort"
 	"strings"
 	"text/tabwriter"
 
@@ -44,6 +46,9 @@ const (
 	cmdFlagNameLimit          = "limit"
 	cmdFlagNamePage           = "page"
 	cmdFlagNameClientID       = "client-id"
+	cmdFlagNameWebAuthnRPID   = "webauthn-rpid"
+	cmdFlagNameApply          = "apply"
+	cmdFlagNameSkip           = "skip-unsupported"
 
 	cmdAutheliaUsersShort = "Manage the users of the database authentication backend"
 	cmdAutheliaUsersLong  = `Manage the users of the database authentication backend.
@@ -88,6 +93,7 @@ func newUsersCmd(ctx *CmdCtx) (cmd *cobra.Command) {
 		newUsersDeleteCmd(ctx),
 		newUsersLogoutCmd(ctx),
 		newUsersAuditCmd(ctx),
+		newUsersImportCmd(ctx),
 	)
 
 	return cmd
@@ -129,6 +135,36 @@ func newSimpleCmd(use, short string, args cobra.PositionalArgs, runE func(cmd *c
 		SilenceUsage:      true,
 		DisableAutoGenTag: true,
 	}
+}
+
+func newUsersImportCmd(ctx *CmdCtx) (cmd *cobra.Command) {
+	cmd = &cobra.Command{
+		Use:   "import",
+		Short: "Import users from another identity provider",
+		Args:  cobra.NoArgs,
+
+		DisableAutoGenTag: true,
+	}
+
+	keycloak := newSimpleCmd("keycloak <realm export file>", "Import the users and groups of a Keycloak realm export", cobra.ExactArgs(1), ctx.UsersImportKeycloakRunE)
+
+	keycloak.Long = `Import the users and groups of a Keycloak realm export.
+
+The file is the export of one realm with its users in the same file: kc.sh export --realm <realm> --users same_file --file <file>. Only its users and groups are read.
+
+Every group is created, and every user with its group memberships, profile, enabled state, password hash (argon2 and pbkdf2, kept as they are), and WebAuthn credentials (passkeys and security keys, with their sign counts). The Keycloak user ID becomes the user's OpenID Connect 1.0 subject identifier (for clients with public subjects) and WebAuthn user handle, so apps see the same subject and passkeys keep working. The backup flags of the WebAuthn credentials, which Keycloak doesn't keep, are taken from their first sign in.
+
+Nothing is changed unless --apply is given: without it the import runs in a transaction which is rolled back, and reports what it would do. With it everything is imported in one transaction, or nothing. An existing username or email fails the import. Anything which can't be imported (one-time password credentials, subgroups, federated users, unknown hash algorithms) fails the import unless --skip-unsupported is given, which reports it instead. Service account users are always skipped.`
+	keycloak.Example = `authelia users import keycloak realm-export.json --webauthn-rpid example.com --config config.yml
+authelia users import keycloak realm-export.json --webauthn-rpid example.com --apply --config config.yml`
+
+	keycloak.Flags().String(cmdFlagNameWebAuthnRPID, "", "the WebAuthn RP ID the credentials were registered for, which must be Authelia's (required with WebAuthn credentials)")
+	keycloak.Flags().Bool(cmdFlagNameApply, false, "import, instead of a dry run")
+	keycloak.Flags().Bool(cmdFlagNameSkip, false, "skip and report what can't be imported, instead of failing")
+
+	cmd.AddCommand(keycloak)
+
+	return cmd
 }
 
 func newUsersListCmd(ctx *CmdCtx) (cmd *cobra.Command) {
@@ -773,4 +809,78 @@ func writeUser(w io.Writer, user *management.User) {
 	_, _ = fmt.Fprintf(tw, "Updated:\t%s\n", user.UpdatedAt.Format("2006-01-02 15:04:05 MST"))
 
 	_ = tw.Flush()
+}
+
+// UsersImportKeycloakRunE is the RunE for the authelia users import keycloak command.
+func (ctx *CmdCtx) UsersImportKeycloakRunE(cmd *cobra.Command, args []string) (err error) {
+	opts := management.KeycloakImportOptions{}
+
+	if opts.RPID, err = cmd.Flags().GetString(cmdFlagNameWebAuthnRPID); err != nil {
+		return err
+	}
+
+	if opts.Apply, err = cmd.Flags().GetBool(cmdFlagNameApply); err != nil {
+		return err
+	}
+
+	if opts.SkipUnsupported, err = cmd.Flags().GetBool(cmdFlagNameSkip); err != nil {
+		return err
+	}
+
+	file, err := os.Open(args[0])
+	if err != nil {
+		return fmt.Errorf("error opening the realm export: %w", err)
+	}
+
+	defer file.Close()
+
+	return ctx.withManagementService(func(service *management.Service) (err error) {
+		var report *management.KeycloakImportReport
+
+		if report, err = service.ImportKeycloak(ctx.usersActor(), file, opts); err != nil {
+			return err
+		}
+
+		writeKeycloakImportReport(cmd.OutOrStdout(), report)
+
+		return nil
+	})
+}
+
+func writeKeycloakImportReport(w io.Writer, report *management.KeycloakImportReport) {
+	if report.Applied {
+		_, _ = fmt.Fprintln(w, "Imported:")
+	} else {
+		_, _ = fmt.Fprintln(w, "Dry run, nothing was changed (import with --apply). It would import:")
+	}
+
+	count := func(counts map[string]int) string {
+		parts := make([]string, 0, len(counts))
+
+		for name, n := range counts {
+			parts = append(parts, fmt.Sprintf("%s: %d", name, n))
+		}
+
+		sort.Strings(parts)
+
+		return strings.Join(parts, ", ")
+	}
+
+	_, _ = fmt.Fprintf(w, "  users: %d (disabled: %d)\n  groups: %d\n  group memberships: %d\n  subject identifiers: %d\n  passwords: %s\n  WebAuthn credentials: %s\n",
+		report.Users, report.Disabled, report.Groups, report.Memberships, report.Subjects, count(report.Passwords), count(report.WebAuthn))
+
+	for _, list := range []struct {
+		title string
+		items []string
+	}{{"Skipped", report.Skipped}, {"Warnings", report.Warnings}} {
+		if len(list.items) == 0 {
+			continue
+		}
+
+		_, _ = fmt.Fprintf(w, "%s:\n", list.title)
+
+		for _, item := range list.items {
+			_, _ = fmt.Fprintf(w, "  %s\n", item)
+		}
+	}
 }

@@ -1,0 +1,151 @@
+{
+  "realm": "test",
+  "keycloakVersion": "26.8.2",
+  "groups": [
+    {
+      "id": "8b27b08e-26bf-486e-9fb3-ef95c9515d2c",
+      "name": "admins",
+      "path": "/admins",
+      "subGroups": [],
+      "attributes": {},
+      "realmRoles": [],
+      "clientRoles": {}
+    },
+    {
+      "id": "fe225c21-a2d6-4bca-8e2b-0a13a599887a",
+      "name": "developers",
+      "path": "/developers",
+      "subGroups": [],
+      "attributes": {},
+      "realmRoles": [],
+      "clientRoles": {}
+    },
+    {
+      "id": "5dc3abb8-08b7-4132-b2fa-6ad639aa67ea",
+      "name": "forgejo_users",
+      "path": "/forgejo_users",
+      "subGroups": [],
+      "attributes": {},
+      "realmRoles": [],
+      "clientRoles": {}
+    },
+    {
+      "id": "ebf4baae-c113-44af-985a-30b2f548c04d",
+      "name": "sgnl_users",
+      "path": "/sgnl_users",
+      "subGroups": [],
+      "attributes": {},
+      "realmRoles": [],
+      "clientRoles": {}
+    }
+  ],
+  "users": [
+    {
+      "id": "64cbf037-42cd-4a17-b555-8ee34dda4bc2",
+      "username": "alice-test",
+      "firstName": "Alice",
+      "lastName": "Test",
+      "email": "alice-test@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "createdTimestamp": 1795471935655,
+      "totp": false,
+      "credentials": [
+        {
+          "id": "87ed1c94-ad0b-4c1d-8560-84b8eaf6f019",
+          "type": "password",
+          "createdDate": 1795471936604,
+          "secretData": "{\"value\":\"Jwm4OxNQypWqIL4ho/OzTSopsiwSPO7pvUWNxUJbLHM=\",\"salt\":\"nQUMylYo4hzId+Ft7C2a/w==\",\"additionalParameters\":{}}",
+          "credentialData": "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
+        },
+        {
+          "id": "39a369b4-1ff9-4ac7-ac25-65e1628ca5f0",
+          "type": "webauthn",
+          "userLabel": "virtual-alice-test",
+          "createdDate": 1795471956936,
+          "secretData": "{}",
+          "credentialData": "{\"aaguid\":\"01020304-0506-0708-0102-030405060708\",\"credentialId\":\"xs+Yl6nMIErJJVt+AYpGtVKFSg+u0iOZ83EHnj4VEqc=\",\"counter\":95471961,\"credentialPublicKey\":\"pQECAyYgASFYIIm6RsgFimmb-kzBFyRogu3faZxm5qwElPomBSsU3dcBIlggV1iaM0B5gxjZqlpYJcPwzAo0XjmAuXryDKKm7P2rm38\",\"attestationStatementFormat\":\"none\",\"transports\":[\"internal\"]}"
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "notBefore": 0,
+      "groups": [
+        "/sgnl_users"
+      ]
+    },
+    {
+      "id": "4e74343b-36ad-4120-9980-788d51f4ac2b",
+      "username": "bob-test",
+      "firstName": "Bob",
+      "lastName": "Test",
+      "email": "bob-test@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "createdTimestamp": 1795471935660,
+      "totp": false,
+      "credentials": [
+        {
+          "id": "6bd55751-70c4-4d63-9363-6d327a282dfe",
+          "type": "password",
+          "createdDate": 1795471937253,
+          "secretData": "{\"value\":\"BgqEU2W9DL6CaKXl8BaSqixKh9DTmUg2DUcsXF7Auzo=\",\"salt\":\"nYzi7HcgPHFK/MCQKfDBQA==\",\"additionalParameters\":{}}",
+          "credentialData": "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
+        },
+        {
+          "id": "7a2a325a-c5d3-4cb0-9af3-3eaac4a1f38f",
+          "type": "webauthn",
+          "userLabel": "virtual-bob-test",
+          "createdDate": 1795471970989,
+          "secretData": "{}",
+          "credentialData": "{\"aaguid\":\"01020304-0506-0708-0102-030405060708\",\"credentialId\":\"TavuDpFcK/RHfWyAW5d+CcOGyVTo66n6oDF/88S29Zs=\",\"counter\":95471976,\"credentialPublicKey\":\"pQECAyYgASFYINFECfSPPuZpyi-pb7W4Fi8t7BVEN8dDh_EVDhra6zd5IlggAlaSBbb5K7cwU43yYypoCkELJQfeqqJvOvuKCvXDZyI\",\"attestationStatementFormat\":\"none\",\"transports\":[\"internal\"]}"
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "notBefore": 0,
+      "groups": [
+        "/admins",
+        "/forgejo_users",
+        "/sgnl_users"
+      ]
+    },
+    {
+      "id": "a82dd03d-ca05-46f3-a27e-ed41c79d0d69",
+      "username": "carol-test",
+      "firstName": "Carol",
+      "lastName": "Test",
+      "email": "carol-test@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "createdTimestamp": 1795472706969,
+      "totp": false,
+      "credentials": [
+        {
+          "id": "bc529011-028e-4489-97fd-0e852b303a83",
+          "type": "password",
+          "createdDate": 1795472707743,
+          "secretData": "{\"value\":\"xZbYQNUQnw6K3s581WiZ5XckOG1mQmJCHMJFfZo0XGE=\",\"salt\":\"9dLZ1f29yBaxUko0oa2Tbw==\",\"additionalParameters\":{}}",
+          "credentialData": "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
+        },
+        {
+          "id": "9f77161d-b223-4e60-874d-d858fcda306e",
+          "type": "webauthn",
+          "userLabel": "virtual-carol-test",
+          "createdDate": 1795472724671,
+          "secretData": "{}",
+          "credentialData": "{\"aaguid\":\"01020304-0506-0708-0102-030405060708\",\"credentialId\":\"M1ffWRTRkWIK0Hi8YdXYcwmWOj+tb/g2IytZ2Yt3Z7o=\",\"counter\":95472729,\"credentialPublicKey\":\"pQECAyYgASFYIHE2kHHktp8VQru3mjZ_IDOfmWtXD8qEzmdTtznb2_XPIlggP69NH3ctQIzZ3-QnHqFtBz838-amuLIh4QVCIDqoAgs\",\"attestationStatementFormat\":\"none\",\"transports\":[\"internal\"]}"
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "default-roles-test"
+      ],
+      "notBefore": 0,
+      "groups": [
+        "/sgnl_users"
+      ]
+    }
+  ]
+}

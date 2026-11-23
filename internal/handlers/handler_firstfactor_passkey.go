@@ -212,7 +212,9 @@ func FirstFactorPasskeyPOST(ctx *middlewares.AutheliaCtx) {
 		return
 	}
 
-	if u, c, err = provider.ValidatePasskeyLogin(handlerWebAuthnDiscoverableLogin(ctx, provider.Config.RPID), *data, response); err != nil {
+	var adopted string
+
+	if u, c, err = provider.ValidatePasskeyLogin(handlerWebAuthnDiscoverableLogin(ctx, provider.Config.RPID, response, &adopted), *data, response); err != nil {
 		ctx.SetStatusCode(fasthttp.StatusForbidden)
 		ctx.SetJSONError(messageMFAValidationFailed)
 
@@ -264,6 +266,8 @@ func FirstFactorPasskeyPOST(ctx *middlewares.AutheliaCtx) {
 
 				return
 			}
+
+			handleWebAuthnImportedFlagsSaved(ctx, adopted)
 
 			break
 		}

@@ -448,6 +448,20 @@ func (mr *MockStorageMockRecorder) DeleteWebAuthnCredentialByUsername(ctx, usern
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteWebAuthnCredentialByUsername", reflect.TypeOf((*MockStorage)(nil).DeleteWebAuthnCredentialByUsername), ctx, username, description)
 }
 
+// DeleteWebAuthnCredentialImported mocks base method.
+func (m *MockStorage) DeleteWebAuthnCredentialImported(ctx context.Context, kid string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteWebAuthnCredentialImported", ctx, kid)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteWebAuthnCredentialImported indicates an expected call of DeleteWebAuthnCredentialImported.
+func (mr *MockStorageMockRecorder) DeleteWebAuthnCredentialImported(ctx, kid any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteWebAuthnCredentialImported", reflect.TypeOf((*MockStorage)(nil).DeleteWebAuthnCredentialImported), ctx, kid)
+}
+
 // ExistsTOTPHistory mocks base method.
 func (m *MockStorage) ExistsTOTPHistory(ctx context.Context, username string, step uint64) (bool, error) {
 	m.ctrl.T.Helper()
@@ -506,6 +520,21 @@ func (m *MockStorage) GetAuthenticationLogsStats(ctx context.Context) (*storage.
 func (mr *MockStorageMockRecorder) GetAuthenticationLogsStats(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAuthenticationLogsStats", reflect.TypeOf((*MockStorage)(nil).GetAuthenticationLogsStats), ctx)
+}
+
+// IsWebAuthnCredentialImported mocks base method.
+func (m *MockStorage) IsWebAuthnCredentialImported(ctx context.Context, kid string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsWebAuthnCredentialImported", ctx, kid)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsWebAuthnCredentialImported indicates an expected call of IsWebAuthnCredentialImported.
+func (mr *MockStorageMockRecorder) IsWebAuthnCredentialImported(ctx, kid any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsWebAuthnCredentialImported", reflect.TypeOf((*MockStorage)(nil).IsWebAuthnCredentialImported), ctx, kid)
 }
 
 // LoadAdministrationAudit mocks base method.
@@ -1807,6 +1836,20 @@ func (m *MockStorage) SaveWebAuthnCredential(ctx context.Context, credential mod
 func (mr *MockStorageMockRecorder) SaveWebAuthnCredential(ctx, credential any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveWebAuthnCredential", reflect.TypeOf((*MockStorage)(nil).SaveWebAuthnCredential), ctx, credential)
+}
+
+// SaveWebAuthnCredentialImported mocks base method.
+func (m *MockStorage) SaveWebAuthnCredentialImported(ctx context.Context, kid, source string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SaveWebAuthnCredentialImported", ctx, kid, source)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SaveWebAuthnCredentialImported indicates an expected call of SaveWebAuthnCredentialImported.
+func (mr *MockStorageMockRecorder) SaveWebAuthnCredentialImported(ctx, kid, source any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveWebAuthnCredentialImported", reflect.TypeOf((*MockStorage)(nil).SaveWebAuthnCredentialImported), ctx, kid, source)
 }
 
 // SaveWebAuthnUser mocks base method.

@@ -631,7 +631,15 @@ func (s *Service) DeleteGroup(ctx context.Context, name string) (err error) {
 }
 
 // transaction runs fn in one storage transaction. The signing key is loaded first, as it can't be loaded inside one.
+// ctxKeyTransaction marks a context which carries a transaction of the service, which nested changes join.
+type ctxKeyTransaction struct{}
+
 func (s *Service) transaction(ctx context.Context, fn func(ctx context.Context) error) (err error) {
+	// A change made within another change, such as the users of an import, joins its transaction.
+	if joined, _ := ctx.Value(ctxKeyTransaction{}).(bool); joined {
+		return fn(ctx)
+	}
+
 	if err = s.store.LoadAuthenticationUserHMACKey(ctx); err != nil {
 		return err
 	}
@@ -641,6 +649,8 @@ func (s *Service) transaction(ctx context.Context, fn func(ctx context.Context) 
 	if txctx, err = s.store.BeginTX(ctx); err != nil {
 		return fmt.Errorf("error beginning transaction: %w", err)
 	}
+
+	txctx = context.WithValue(txctx, ctxKeyTransaction{}, true)
 
 	if err = fn(txctx); err != nil {
 		if rollbackErr := s.store.Rollback(txctx); rollbackErr != nil {

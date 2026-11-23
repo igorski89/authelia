@@ -62,15 +62,28 @@ for engine in postgres mysql; do
 
   users=(-c ci-users.yml "${args[@]:2}")
 
-  ./authelia groups create admins "${users[@]}"
+  # The Keycloak import: a dry run changes nothing, the import is one transaction, and a second import fails whole.
+  export_file=internal/management/testdata/keycloak-realm-export.json
+  expect_output '^  users: 3 ' ./authelia users import keycloak "${export_file}" --webauthn-rpid localhost "${users[@]}"
+  if [ "$(./authelia users list "${users[@]}" | wc -l)" -ne 1 ]; then
+    echo 'the dry run of the import kept users' >&2
+    exit 1
+  fi
+  expect_output '^Imported:' ./authelia users import keycloak "${export_file}" --webauthn-rpid localhost --apply \
+    "${users[@]}"
+  expect_output 'Groups: +admins, forgejo_users, sgnl_users$' ./authelia users get bob-test "${users[@]}"
+  expect_fail ./authelia users import keycloak "${export_file}" --webauthn-rpid localhost --apply "${users[@]}"
+  expect_output 'cli:.*user\.import +carol-test' ./authelia users audit carol-test "${users[@]}"
+
+  ./authelia groups create staff "${users[@]}"
   ./authelia groups create Users "${users[@]}"
-  echo 'a-long-password-1' | ./authelia users create Alice --email Alice@Example.com --group admins --group Users \
+  echo 'a-long-password-1' | ./authelia users create Alice --email Alice@Example.com --group staff --group Users \
     --password-stdin "${users[@]}"
   ./authelia users create bob --email bob@example.com --no-password "${users[@]}"
   expect_fail ./authelia users create ALICE --email x@example.com --no-password "${users[@]}"
   expect_fail ./authelia users create carol --email ALICE@example.com --no-password "${users[@]}"
   ./authelia users update bob --email BOB2@example.com --disable "${users[@]}"
-  expect_output 'Groups: +Users, admins$' ./authelia users get alice "${users[@]}"
+  expect_output 'Groups: +Users, staff$' ./authelia users get alice "${users[@]}"
   expect_output '^bob +bob2@example.com .*true' ./authelia users list "${users[@]}"
   expect_output '^Revoked [0-9]+ token session' ./authelia users logout bob "${users[@]}"
   ./authelia users delete alice --force "${users[@]}"
