@@ -20,12 +20,14 @@ import {
 import {
     ExternalIdentityError,
     ExternalIdentityLinkProvider,
+    FlowNameSAML,
     RedirectionURL,
     RequestMethod,
 } from "@constants/SearchParams";
 import { useLocalStorageMethodContext } from "@contexts/LocalStorageMethodContext";
 import { useNotifications } from "@contexts/NotificationsContext";
 import { useConfiguration } from "@hooks/Configuration";
+import { useFlow } from "@hooks/Flow";
 import { useQueryParam } from "@hooks/QueryParam";
 import { useRedirector } from "@hooks/Redirector";
 import { useRouterNavigate } from "@hooks/RouterNavigate";
@@ -33,6 +35,7 @@ import { useAutheliaState } from "@hooks/State";
 import { useUserInfoPOST } from "@hooks/UserInfo";
 import { SecondFactorMethod } from "@models/Methods";
 import { UserInfo } from "@models/UserInfo";
+import { SAMLResumePath } from "@services/Api";
 import { postExternalIdentityStart } from "@services/ExternalIdentity";
 import { checkSafeRedirection } from "@services/SafeRedirection";
 import { AuthenticationLevel } from "@services/State";
@@ -85,7 +88,9 @@ const LoginPortal = function (props: Props) {
     const [firstFactorDisabled, setFirstFactorDisabled] = useState(true);
     const [broadcastRedirect, setBroadcastRedirect] = useState(false);
     const linkStartedRef = useRef(false);
+    const samlResumedRef = useRef(false);
     const redirector = useRedirector();
+    const { flow, id: flowID } = useFlow();
     const { localStorageMethod } = useLocalStorageMethodContext();
     const { t: translate } = useTranslation();
 
@@ -182,6 +187,24 @@ const LoginPortal = function (props: Props) {
         translate,
     ]);
 
+    // A SAML request reaches the portal with a flow but no redirection URL. A user who is already fully authenticated,
+    // such as one whose session cookie a cross-site HTTP-POST request didn't carry, continues the request at once.
+    // Only a complete authentication resumes it: the endpoint sends an insufficient session back here.
+    const handleSAMLFlow = useCallback(() => {
+        if (flow !== FlowNameSAML || !flowID || !authenticationComplete) {
+            return false;
+        }
+
+        // The flow is used once, and this runs again whenever the state reloads, so only the first run navigates.
+        if (!samlResumedRef.current) {
+            samlResumedRef.current = true;
+
+            redirector(`${SAMLResumePath}?${new URLSearchParams({ flow_id: flowID }).toString()}`);
+        }
+
+        return true;
+    }, [flow, flowID, authenticationComplete, redirector]);
+
     const handleRedirection = useCallback(async () => {
         if (!redirectionURL) {
             return false;
@@ -248,6 +271,10 @@ const LoginPortal = function (props: Props) {
                 return;
             }
 
+            if (handleSAMLFlow()) {
+                return;
+            }
+
             const redirected = await handleRedirection();
             if (redirected) {
                 return;
@@ -270,6 +297,7 @@ const LoginPortal = function (props: Props) {
         handleAuthenticationNavigation,
         handleExternalIdentityLink,
         handleRedirection,
+        handleSAMLFlow,
     ]);
 
     const handleChannelStateChange = async () => {

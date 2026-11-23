@@ -10,6 +10,7 @@ import { getBasePath } from "@utils/BasePath";
 const basePath = getBasePath();
 
 export const OpenIDConnectConsentPath = basePath + "/api/oidc/consent";
+export const SAMLResumePath = basePath + "/api/saml/sso/resume";
 export const OpenIDConnectDeviceAuthorizationPath = basePath + "/api/oidc/device-authorization";
 
 export const FirstFactorPath = basePath + "/api/firstfactor";

@@ -70,9 +70,9 @@ def idp_path(url):
     return urllib.parse.urlparse(url).path[len(BASE):] + ('?' + urllib.parse.urlparse(url).query if urllib.parse.urlparse(url).query else '')
 
 
-def send_request(client, name, binding='redirect', sign=False, force=False, acs='', tamper=False):
+def send_request(client, name, binding='redirect', sign=False, force=False, acs='', tamper=False, start=None):
     """Sends an authentication request of the service provider through the client and returns the HTTP answer."""
-    start = sp(name, 'GET', f'/start?binding={binding}&sign={int(sign)}&force={int(force)}&acs={urllib.parse.quote(acs)}')
+    start = start or sp(name, 'GET', f'/start?binding={binding}&sign={int(sign)}&force={int(force)}&acs={urllib.parse.quote(acs)}')
 
     if tamper:
         # Changes the signed request after signing: the signature no longer covers it.
@@ -92,7 +92,22 @@ def deliver(name, page):
     if 'SAMLResponse' not in form:
         return {'error': 'no response form', 'page': page[:200]}
 
-    return sp(name, 'POST', '/acs', {k: html.unescape(v) for k, v in form.items()})
+    verdict = sp(name, 'POST', '/acs', {k: html.unescape(v) for k, v in form.items()})
+    verdict['relay_state'] = html.unescape(form.get('RelayState', ''))
+
+    return verdict
+
+
+def anonymous_login(name, binding='redirect', sign=False):
+    """An SP-initiated login of a new browser: the request, the portal's first factor, and the resumed response."""
+    client = Client()
+    st, h, _ = send_request(client, name, binding=binding, sign=sign)
+    fid = flow_id(h.get('Location', ''))
+    st, _, b = client.req('POST', '/api/firstfactor', {'username': 'sam', 'password': 'a-long-password-5', 'flow': 'saml', 'flowID': fid})
+    resume = json.loads(b).get('data', {}).get('redirect', '')
+    st, _, page = client.req('GET', idp_path(resume))
+
+    return client, deliver(name, page)
 
 
 def flow_id(location):
@@ -111,12 +126,13 @@ resume = json.loads(b).get('data', {}).get('redirect', '')
 check('after login the portal is told to resume the request', st == 200 and '/api/saml/sso/resume?flow_id=' in resume, b)
 
 st, h, page = user.req('GET', idp_path(resume))
-check('the response page is allowed to submit itself by the Content-Security-Policy only',
-      st == 200 and "script-src 'sha256-" in h.get('Content-Security-Policy', '') and 'unsafe-inline' not in h.get('Content-Security-Policy', ''),
+check('the response page is HTML, allowed to submit itself by the Content-Security-Policy only',
+      st == 200 and h.get('Content-Type', '').startswith('text/html') and "script-src 'sha256-" in h.get('Content-Security-Policy', '') and 'unsafe-inline' not in h.get('Content-Security-Policy', ''),
       h.get('Content-Security-Policy'))
 result = deliver('sp1', page)
 check('the service provider accepts the response, NameID = email',
       result.get('name_id') == 'sam@example.com' and result.get('name_id_format', '').endswith('emailAddress'), result)
+check('RelayState comes back unchanged', result.get('relay_state') == 'relay-1', result)
 check('the configured attributes are released', result.get('attributes', {}).get('groups') == ['staff']
       and result.get('attributes', {}).get('email') == ['sam@example.com'], result)
 
@@ -143,9 +159,10 @@ check('after the first factor the portal asks for the second factor', st == 200 
 st, _, page = send_request(user, 'sp3', sign=False)
 check('an unsigned request is refused where the service provider signs its requests', 'error' in deliver('sp3', page) or st >= 400, page[:200])
 
-st, _, page = send_request(user, 'sp3', sign=True)
-result = deliver('sp3', page)
-check('a signed request is answered', result.get('name_id') == 'sam@example.com', result)
+for binding in ['redirect', 'post']:
+    st, _, page = send_request(user, 'sp3', binding=binding, sign=True)
+    result = deliver('sp3', page)
+    check(f'a signed {binding} request is answered', result.get('name_id') == 'sam@example.com', result)
 
 st, _, page = send_request(user, 'sp3', binding='post', sign=True, tamper=True)
 check('a tampered signed request gets no assertion', 'SAMLResponse' not in page or 'error' in deliver('sp3', page), f'{st} {page[:120]}')
@@ -153,6 +170,31 @@ check('a tampered signed request gets no assertion', 'SAMLResponse' not in page 
 # An assertion consumer service URL which isn't registered for the service provider.
 st, _, page = send_request(user, 'sp1', acs='https://evil.example.com/saml/acs')
 check('an unregistered ACS URL gets no response', 'evil.example.com' not in page and 'SAMLResponse' not in page, f'{st} {page[:160]}')
+
+# Signed requests through the portal: the stored request is replayed as a form, so the signature of either binding
+# must still be checked and accepted after login.
+for binding in ['redirect', 'post']:
+    _, result = anonymous_login('sp3', binding=binding, sign=True)
+    check(f'a signed {binding} request is answered after login through the portal', result.get('name_id') == 'sam@example.com', result)
+
+# Replay: the same request twice.
+start = sp('sp1', 'GET', '/start?binding=post')
+st, _, first = send_request(user, 'sp1', binding='post', start=start)
+st, _, again = send_request(user, 'sp1', binding='post', start=start)
+check('a replayed request gets no second assertion', 'SAMLResponse' in first and ('SAMLResponse' not in again or 'error' in deliver('sp1', again)), f'{st} {again[:160]}')
+
+# Fresh user data with a live session: group membership and email are read from the user, not from the session.
+api.req('POST', '/api/admin/groups', {'name': 'admins'}, A)
+api.req('PUT', '/api/admin/users/sam/groups/admins', None, A)
+st, _, page = send_request(user, 'sp4')
+check('a member of the allowed group gets an assertion', deliver('sp4', page).get('name_id') == 'sam@example.com')
+api.req('DELETE', '/api/admin/users/sam/groups/admins', None, A)
+st, _, page = send_request(user, 'sp4')
+check('removed from the group with a live session: RequestDenied', any(c.endswith(':RequestDenied') for c in deliver('sp4', page).get('status_codes') or []))
+api.req('PATCH', '/api/admin/users/sam', {'email': 'sam.new@example.com'}, A)
+st, _, page = send_request(user, 'sp1')
+result = deliver('sp1', page)
+check('a changed email is the NameID at once', result.get('name_id') == 'sam.new@example.com', result)
 
 # Group restriction.
 st, _, page = send_request(user, 'sp4')

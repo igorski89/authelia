@@ -133,7 +133,7 @@ func (t *tracker) start(w http.ResponseWriter, r *http.Request) {
 	t.mu.Unlock()
 
 	if binding == saml.HTTPPostBinding {
-		replyPost(w, &s, req)
+		replyPost(w, req)
 
 		return
 	}
@@ -148,15 +148,9 @@ func (t *tracker) start(w http.ResponseWriter, r *http.Request) {
 	reply(w, map[string]any{"url": u.String()})
 }
 
-func replyPost(w http.ResponseWriter, s *saml.ServiceProvider, req *saml.AuthnRequest) {
-	if s.SignatureMethod != "" {
-		if err := s.SignAuthnRequest(req); err != nil {
-			reply(w, map[string]any{"error": err.Error()})
-
-			return
-		}
-	}
-
+// replyPost returns the form of an HTTP-POST request, which MakeAuthenticationRequest has already signed if the service
+// provider signs its requests.
+func replyPost(w http.ResponseWriter, req *saml.AuthnRequest) {
 	doc := etree.NewDocument()
 	doc.SetRoot(req.Element())
 

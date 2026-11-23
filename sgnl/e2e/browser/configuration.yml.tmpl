@@ -38,6 +38,14 @@ notifier:
   filesystem:
     filename: '/data/notif.txt'
 identity_providers:
+  saml:
+    key: {{ secret "/config/saml.key" | mindent 6 "|" | msquote }}
+    certificate_chain: {{ secret "/config/saml.crt" | mindent 6 "|" | msquote }}
+    enable_keycloak_endpoints: true
+    service_providers:
+      - entity_id: 'https://sp2.example.com/saml/metadata'
+        assertion_consumer_service_urls: ['https://sp2.example.com/saml/acs']
+        authorization_policy: 'two_factor'
   oidc:
     hmac_secret: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
     jwks:

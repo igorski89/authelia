@@ -9,7 +9,7 @@ set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 dir="$(mktemp -d)"
-trap 'kill "${pid:-0}" 2>/dev/null || true; [ -n "${E2E_KEEP:-}" ] && cp "${dir}/authelia.log" "${E2E_KEEP}"; rm -rf "${dir}"' EXIT
+trap '[ -n "${pid:-}" ] && kill "${pid}" 2>/dev/null; [ -n "${E2E_KEEP:-}" ] && cp "${dir}/authelia.log" "${E2E_KEEP}"; rm -rf "${dir}"' EXIT
 
 go build -o "${dir}/authelia" ./cmd/authelia
 openssl genrsa -out "${dir}/jwk.pem" 2048 2>/dev/null

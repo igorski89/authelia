@@ -61,6 +61,7 @@ func SAMLSSO(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *http.Reque
 	}
 
 	rw.Header().Set("Content-Security-Policy", samlidp.ContentSecurityPolicy)
+	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	idp.ServeSSO(rw, r.WithContext(context.WithValue(r.Context(), ctxKeySAMLAutheliaCtx{}, ctx)))
 }
@@ -101,6 +102,7 @@ func SAMLSSOResumeGET(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *h
 	resume.RemoteAddr = r.RemoteAddr
 
 	rw.Header().Set("Content-Security-Policy", samlidp.ContentSecurityPolicy)
+	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	idp.ServeSSO(rw, resume)
 }
