@@ -78,6 +78,9 @@ Checks run against upstream code. Each fact names the commit it was checked on.
   (`TestWebAuthnCredential`, `TestNewOAuth2DeviceCodeSessionFromRequest`) and under `Europe/Berlin` (the latter only).
   It passes under `Australia/Melbourne`, which is apparently the zone of upstream's Buildkite agents, where the same
   commit is green. The fork's CI sets `TZ=Australia/Melbourne` for the Go tests. Worth reporting upstream.
+- **Flaky upstream test:** `internal/authentication` `TestShouldNotStartReloadCooldownWhenContentUnchanged` depends on
+  timing. It failed once on a GitHub runner with `-race` (2026-11-23) and passed 6 of 6 locally. Re-run before
+  investigating.
 
 ### M0 checks (on `b935f93f`)
 
@@ -131,5 +134,27 @@ from a local Keycloak 26.8.2 with a throwaway user, same password policy as prod
        (iCloud Keychain, Google Password Manager; known by AAGUID).
      - A wrong value means the login is refused, not let through. Fallback: the user registers the passkey again
        (invite, C4).
-5. **Image: builds for linux/amd64** from `sgnl/Dockerfile` (local buildx, `build-info` reports linux/amd64,
+5. **Login matrix of SGNL's apps (config study; the live login test is M1/M4).**
+   - There are 12 OIDC clients. The details, with real hostnames, are in SGNL's private instance repo.
+   - **Unchanged or Authelia-config only (7):**
+     - Vaultwarden: stores issuer + `sub`, so the issuer must match byte for byte, including any trailing slash.
+     - Bulwark and the Stalwart web UI: opaque access tokens validated via userinfo, which is Authelia's default.
+     - Forgejo and Dashy: read `groups` from the ID token, so they need a `claims_policy` that puts `groups` (and
+       email/name) into the ID token. By default Authelia's ID token carries no profile claims (verified in check 1's
+       flow).
+     - listmonk: links by email.
+   - **App config change (1):** Grafana hardcodes Keycloak's `/protocol/openid-connect/*` URLs. Its sign-out URL has no
+     Authelia equivalent until RP-initiated logout (authelia/authelia#13809).
+   - **Need specific client settings (4 OpenCloud clients):**
+     - The app verifies access tokens as JWTs, so set `access_token_signed_response_alg: RS256` per client.
+     - The desktop client relies on Keycloak's `http://127.0.0.1/*` wildcard. Authelia accepts any loopback port for
+       public/native clients (`authelia.com/provider/oauth2` `uri.go` `isMatchingLoopbackURI`), but the path must match
+       exactly, so register the exact paths.
+   - **Breaks by design (1):** the agent's client-credentials client calls Keycloak's admin REST API. It needs the fork's
+     admin API (C3, M1).
+   - Also to rebuild in Authelia config:
+     - the group gates, as `authorization_policies`;
+     - `offline_access` and refresh for 5 clients;
+     - per-client token endpoint auth method, because Keycloak accepts both basic and post while Authelia pins one.
+6. **Image: builds for linux/amd64** from `sgnl/Dockerfile` (local buildx, `build-info` reports linux/amd64,
    untagged clean, extra `sgnl`).
