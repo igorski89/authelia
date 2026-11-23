@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/authelia/authelia/v4/internal/model"
@@ -228,6 +229,9 @@ func (p *SQLProvider) LoadAuthenticationGroups(ctx context.Context) (groups []mo
 		return nil, fmt.Errorf("error selecting authentication groups: %w", err)
 	}
 
+	// Sorted here rather than by the query, as the engines collate case differently.
+	sort.Slice(groups, func(i, j int) bool { return groups[i].Name < groups[j].Name })
+
 	return groups, nil
 }
 
@@ -387,6 +391,9 @@ func (p *SQLProvider) verifiedAuthenticationUserGroups(memberships []model.Authe
 
 		values = append(values, value(&memberships[i]))
 	}
+
+	// Sorted here rather than by the query, as the engines collate case differently.
+	sort.Strings(values)
 
 	return values
 }

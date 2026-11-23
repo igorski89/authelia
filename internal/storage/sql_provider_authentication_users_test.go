@@ -347,3 +347,26 @@ func TestSQLProviderAuthenticationUsernameEmailCollisions(t *testing.T) {
 	_, err = provider.LoadAuthenticationUser(ctx, "bob")
 	assert.ErrorIs(t, err, authentication.ErrUserNotFound, "a tampered user is reported as not found")
 }
+
+func TestSQLProviderAuthenticationGroupsSortedByteWise(t *testing.T) {
+	provider := newTestSQLiteProvider(t)
+	require.NoError(t, provider.StartupCheck())
+
+	ctx := context.Background()
+
+	require.NoError(t, provider.CreateAuthenticationUser(ctx, newTestAuthenticationUser("john", "john@example.com")))
+
+	for _, group := range []string{"admins", "Users", "beta"} {
+		require.NoError(t, provider.CreateAuthenticationGroup(ctx, group))
+		require.NoError(t, provider.AddAuthenticationUserGroup(ctx, "john", group))
+	}
+
+	user, err := provider.LoadAuthenticationUser(ctx, "john")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Users", "admins", "beta"}, user.Groups)
+
+	groups, err := provider.LoadAuthenticationGroups(ctx)
+	require.NoError(t, err)
+	require.Len(t, groups, 3)
+	assert.Equal(t, "Users", groups[0].Name)
+}

@@ -68,8 +68,9 @@ Planned work that isn't started yet.
 ## Build
 
 - CI: `.github/workflows/sgnl-ci.yml` runs Go tests with `-race`, golangci-lint, REUSE and yamllint, and the frontend
-  build, tests and ESLint. It runs every migration up, one version down, and up again on real PostgreSQL and MySQL
-  (upstream's unit tests only execute the SQLite SQL). It also builds the linux/amd64 image. It mirrors what upstream's Buildkite pipeline runs
+  build, tests and ESLint. It runs every migration up, one version down, and up again on real PostgreSQL and MySQL,
+  then manages users and groups with the CLI on both (`sgnl/ci-storage-engines.sh`; upstream's unit tests only execute
+  the SQLite SQL). It also builds the linux/amd64 image. It mirrors what upstream's Buildkite pipeline runs
   (`authelia-scripts ci`, `.buildkite/steps/lint.sh`).
 - Nightly drift check: `.github/workflows/sgnl-upstream-nightly.yml` merges upstream `master` into `sgnl` inside the
   runner (never pushed) and runs the same CI. A red run means the next sync has work.
