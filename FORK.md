@@ -81,7 +81,8 @@ Planned work that isn't started yet.
 - Nightly drift check: `.github/workflows/sgnl-upstream-nightly.yml` merges upstream `master` into `sgnl` inside the
   runner (never pushed) and runs the same CI. A red run means the next sync has work.
 - Releases: pushing a tag `v<version>-sgnl.<n>` runs `.github/workflows/sgnl-release.yml`, which runs the CI and then
-  publishes the image to `ghcr.io/igorski89/authelia:<tag>` (public, igor 2026-11-23). `<version>` is the upstream
+  publishes the image to `ghcr.io/igorski89/authelia:<tag>` (public, igor 2026-11-23) for linux/amd64 and linux/arm64
+  (from `-sgnl.2`, igor 2026-11-23), each built on a native runner and joined into one multi-platform tag. `<version>` is the upstream
   release the build leads up to, so `v4.40.0-sgnl.1` is built from upstream `master` before 4.40.0.
 - Image: `sgnl/Dockerfile` builds the frontend and backend from source as a production build (no `dev` tag, version
   stamped by build args). Build it from the repository root:
