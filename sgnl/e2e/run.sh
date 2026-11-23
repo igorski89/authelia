@@ -15,7 +15,7 @@ go build -o "${dir}/authelia" ./cmd/authelia
 openssl genrsa -out "${dir}/jwk.pem" 2048 2>/dev/null
 sed "s|\${DIR}|${dir}|g" "${here}/configuration.yml.tmpl" > "${dir}/configuration.yml"
 
-export X_AUTHELIA_CONFIG_FILTERS=template
+export X_AUTHELIA_CONFIG_FILTERS=template PYTHONDONTWRITEBYTECODE=1
 "${dir}/authelia" storage migrate up -c "${dir}/configuration.yml" > /dev/null
 "${dir}/authelia" -c "${dir}/configuration.yml" > "${dir}/run.log" 2>&1 &
 pid=$!
