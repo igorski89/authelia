@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 SGNL fork contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+---
+name: 'SGNL checkout'
+description: 'Check out the fork and, when asked, merge upstream master into it (local only, never pushed).'
+
+inputs:
+  merge_upstream:
+    description: 'Merge authelia/authelia master into the checked-out commit before building.'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 'Merge upstream master'
+      if: inputs.merge_upstream == 'true'
+      shell: 'bash'
+      run: |
+        git config user.name 'sgnl-ci'
+        git config user.email 'sgnl-ci@users.noreply.github.com'
+        git fetch --no-tags https://github.com/authelia/authelia.git master
+        echo "upstream master: $(git rev-parse FETCH_HEAD)"
+        if ! git merge --no-edit FETCH_HEAD; then
+          echo '::error::upstream master does not merge cleanly into sgnl'
+          git diff --name-only --diff-filter=U
+          exit 1
+        fi

@@ -1,0 +1,152 @@
+# SPDX-FileCopyrightText: 2026 SGNL fork contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+---
+name: 'SGNL CI'
+
+on:
+  push:
+    branches:
+      - 'sgnl'
+      - 'sgnl-*'
+    tags:
+      - 'v*-sgnl.*'
+  pull_request:
+    branches:
+      - 'sgnl'
+  workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      merge_upstream:
+        type: 'boolean'
+        default: false
+
+permissions:
+  contents: 'read'
+
+concurrency:
+  group: '${{ github.workflow }}-${{ github.ref }}-${{ inputs.merge_upstream || false }}'
+  cancel-in-progress: true
+
+env:
+  MERGE_UPSTREAM: '${{ inputs.merge_upstream || false }}'
+
+jobs:
+  go-test:
+    name: 'Go tests'
+    runs-on: 'ubuntu-latest'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/sgnl-checkout
+        with:
+          merge_upstream: '${{ env.MERGE_UPSTREAM }}'
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5  # v7.1.0
+        with:
+          go-version-file: 'go.mod'
+      - name: 'Unit tests (as authelia-scripts unittest --buildkite)'
+        run: |
+          # shellcheck disable=SC2046
+          go test -race -covermode=atomic $(go list ./... | grep -v suites)
+
+  go-lint:
+    name: 'Go lint'
+    runs-on: 'ubuntu-latest'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/sgnl-checkout
+        with:
+          merge_upstream: '${{ env.MERGE_UPSTREAM }}'
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5  # v7.1.0
+        with:
+          go-version-file: 'go.mod'
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a  # v9.3.0
+        with:
+          version: 'v2.15.0'
+
+  repo-lint:
+    name: 'REUSE + YAML lint'
+    runs-on: 'ubuntu-latest'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/sgnl-checkout
+        with:
+          merge_upstream: '${{ env.MERGE_UPSTREAM }}'
+      - uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5  # v6.0.0
+        with:
+          args: 'lint --lines'
+      - name: 'yamllint'
+        run: 'pipx run yamllint .'
+
+  frontend:
+    name: 'Frontend build, test, lint'
+    runs-on: 'ubuntu-latest'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/sgnl-checkout
+        with:
+          merge_upstream: '${{ env.MERGE_UPSTREAM }}'
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1
+        with:
+          version: 12
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '26'
+      - name: 'Install'
+        working-directory: 'web'
+        run: 'pnpm install --frozen-lockfile --ignore-scripts'
+      - name: 'Build'
+        working-directory: 'web'
+        run: 'pnpm build'
+      - name: 'Test'
+        working-directory: 'web'
+        env:
+          CI: 'true'
+        run: 'pnpm test'
+      - name: 'ESLint'
+        working-directory: 'web'
+        run: "pnpm exec eslint '*/**/*.{js,ts,tsx}'"
+
+  image:
+    name: 'Image (linux/amd64)'
+    runs-on: 'ubuntu-latest'
+    needs:
+      - 'go-test'
+      - 'frontend'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/sgnl-checkout
+        with:
+          merge_upstream: '${{ env.MERGE_UPSTREAM }}'
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+      - name: 'Version'
+        id: 'version'
+        run: |
+          echo "commit=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+          echo "tag=$(git describe --tags --exact-match 2>/dev/null || true)" >> "${GITHUB_OUTPUT}"
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: '.'
+          file: 'sgnl/Dockerfile'
+          platforms: 'linux/amd64'
+          push: false
+          build-args: |
+            BUILD_COMMIT=${{ steps.version.outputs.commit }}
+            BUILD_TAG=${{ steps.version.outputs.tag }}
+            BUILD_BRANCH=sgnl
+          tags: 'authelia-sgnl:ci'
