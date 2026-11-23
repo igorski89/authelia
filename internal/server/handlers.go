@@ -442,7 +442,7 @@ func RegisterAdminRoutes(r *router.Router, config *schema.Configuration, provide
 
 	var service *management.Service
 
-	if service, err = management.New(config.AuthenticationBackend.Database, providers.StorageProvider, providers.PasswordPolicy); err != nil {
+	if service, err = management.New(config.AuthenticationBackend.Database, providers.StorageProvider, providers.PasswordPolicy, providers.Session); err != nil {
 		return fmt.Errorf("error initializing the administration API: %w", err)
 	}
 
@@ -453,6 +453,7 @@ func RegisterAdminRoutes(r *router.Router, config *schema.Configuration, provide
 	r.DELETE(prefixAPIAdmin+"/users/{username}", write(handlers.AdminUserDELETE(service)))
 	r.PUT(prefixAPIAdmin+"/users/{username}/password", write(handlers.AdminUserPasswordPUT(service)))
 	r.DELETE(prefixAPIAdmin+"/users/{username}/password", write(handlers.AdminUserPasswordDELETE(service)))
+	r.POST(prefixAPIAdmin+"/users/{username}/logout", write(handlers.AdminUserLogoutPOST(service)))
 	r.PUT(prefixAPIAdmin+"/users/{username}/groups/{group}", write(handlers.AdminUserGroupPUT(service)))
 	r.DELETE(prefixAPIAdmin+"/users/{username}/groups/{group}", write(handlers.AdminUserGroupDELETE(service)))
 

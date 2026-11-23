@@ -3,8 +3,8 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-# Runs the M1 exit test: builds Authelia, starts it on 127.0.0.1:9091 with a throwaway SQLite database and test
-# configuration, and drives the administration API and login flows with exit_test.py.
+# Runs the end-to-end tests: builds Authelia, starts it on 127.0.0.1:9091 with a throwaway SQLite database and test
+# configuration, and runs every *_test.py here against it in name order. Pass test file names to run only those.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -26,5 +26,16 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 
-python3 "${here}/exit_test.py" | tee "${dir}/result.txt"
-! grep -q '^FAIL' "${dir}/result.txt"
+status=0
+
+if [ "$#" -eq 0 ]; then
+  set -- "${here}"/*_test.py
+fi
+
+for test in "$@"; do
+  echo "== $(basename "${test}")"
+
+  python3 "${test}" || status=1
+done
+
+exit "${status}"

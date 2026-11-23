@@ -59,6 +59,13 @@ type Provider interface {
 	// GetStrategy returns the Strategy for the given cookie domain, returning an error when no session cookie is
 	// configured for it.
 	GetStrategy(domain string) (strategy Strategy, err error)
+
+	// CountByUsername returns the number of sessions of the user across every configured cookie domain.
+	CountByUsername(ctx context.Context, username string) (count int, err error)
+
+	// DestroyByUsername destroys every session of the user across every configured cookie domain, returning how many
+	// were destroyed. The cookies themselves can't be cleared, but they no longer resolve to a session.
+	DestroyByUsername(ctx context.Context, username string) (destroyed int, err error)
 }
 
 // The Strategy is the main interface consumers of this API should be using. This allows inspecting the session config,

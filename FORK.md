@@ -51,9 +51,10 @@ Every feature the fork adds or changes, with the upstream files it touches. Each
 | Database authentication backend: `authentication_backend.database` (`password` like the file backend, `search.email`); provider `DatabaseUserProvider` (disabled, missing, or tampered users are "not found"; no cache; `refresh_interval` defaults to `always`); the `debug` commands don't support it yet (no storage there) | `internal/configuration/schema/{authentication.go,keys.go}`, `internal/configuration/validator/{authentication.go,authentication_test.go,const.go}`, `experimental/embed/config_test.go`, `internal/authentication/{database_user_provider.go,database_user_provider_test.go}`, `internal/middlewares/{util.go,util_test.go}`, `internal/commands/debug.go`, `internal/expression/user_attributes.go`, `internal/storage/errors.go` | 2026-11-23 |
 | User management: package `internal/management` (validation, password policy or PHC digest import (hash schemes only, never `$plaintext$`/`$base64$`), atomic create with groups, delete with second factors and links in one transaction); CLI `authelia users {list,get,create,update,password,delete}` and `authelia groups {list,create,delete,members,add,remove}` | `internal/management/{users.go,users_test.go}`, `internal/commands/{users.go,storage.go,root.go}` (`addStoragePersistentFlags` extracted from `newStorageCmd`) | 2026-11-23 |
 | Admin API for users and groups (registered only with OIDC and the database backend): `GET/POST /api/admin/users`, `GET/PATCH/DELETE /api/admin/users/{username}`, `PUT/DELETE /api/admin/users/{username}/password`, `PUT/DELETE /api/admin/users/{username}/groups/{group}`, `GET/POST /api/admin/groups`, `DELETE /api/admin/groups/{group}`, `GET /api/admin/groups/{group}/members`; reads need `authelia.admin.read`, changes `authelia.admin.write`; JSON errors `invalid_request` 400, `not_found` 404, `conflict` 409, `server_error` 500 (no details); every change is logged with the client id; documented in the OpenAPI spec | `internal/handlers/{handler_admin.go,handler_admin_test.go}`, `internal/server/{handlers.go,template.go}`, `api/openapi.yml` (tag, paths, `components.responses`, schemas, `admin_bearer` scheme) | 2026-11-23 |
-| Tokens of users who are no longer permitted (any backend): the token endpoint refuses authorization code, refresh token, and device code grants for a user the provider reports as not found (deleted or disabled) with `invalid_grant`, userinfo answers 401 instead of the claims from when the token was issued, and introspection reports such a token inactive. Transient lookup errors are a server error, so re-enabling a user restores its refresh tokens. Already-issued JWT access tokens validated by apps themselves stay valid until they expire | `internal/handlers/{handler_oauth2_token.go,handler_oauth2_oidc_userinfo.go,handler_oauth2_introspection.go,handler_oauth2_token_user_test.go}` | 2026-11-23 |
+| Revoke everything of a user (C5): `management.Service.RevokeUser` revokes the user's OAuth 2.0 / OpenID Connect 1.0 sessions (access, refresh, authorization code, device code, PKCE, OpenID Connect) and pre-configured consent for every subject identifier (public and pairwise), optionally for one client only, and destroys its portal sessions on every cookie domain (`session.Provider.{CountByUsername,DestroyByUsername}`). Disable and delete run it, so re-enabling a user doesn't bring old tokens back. `POST /api/admin/users/{username}/logout` (optional `client_id`), CLI `authelia users logout [--client-id]` (the CLI reaches portal sessions only when they are kept in the database, the default). `GET /api/admin/users/{username}` also reports `credentials` and `sessions`; group members are user objects | `internal/session/{types.go,provider.go,provider_test.go}`, `internal/storage/{provider.go,sql_provider_oauth2_revoke_user.go,sql_provider_oauth2_revoke_user_test.go}`, `internal/mocks/storage.go`, `internal/management/{users.go,users_test.go}`, `internal/handlers/{handler_admin.go,handler_admin_test.go}`, `internal/server/handlers.go`, `internal/commands/users.go`, `api/openapi.yml` | 2026-11-23 |
+| Tokens of users who are no longer permitted (any backend): the token endpoint refuses authorization code, refresh token, and device code grants for a user the provider reports as not found (deleted or disabled) with `invalid_grant`, userinfo answers 401 instead of the claims from when the token was issued, and introspection reports such a token inactive. Transient lookup errors are a server error, not a refusal. (Since M2, disabling a user also revokes its tokens, so re-enabling doesn't bring them back.) Already-issued JWT access tokens validated by apps themselves stay valid until they expire | `internal/handlers/{handler_oauth2_token.go,handler_oauth2_oidc_userinfo.go,handler_oauth2_introspection.go,handler_oauth2_token_user_test.go}` | 2026-11-23 |
 
-Fork-only build files: `FORK.md`, `sgnl/` (image, CI scripts, the M1 exit test in `sgnl/m1/`), `.github/workflows/sgnl-*.yml`, `.github/actions/sgnl-checkout/`.
+Fork-only build files: `FORK.md`, `sgnl/` (image, CI scripts, the end-to-end tests in `sgnl/e2e/`), `.github/workflows/sgnl-*.yml`, `.github/actions/sgnl-checkout/`.
 
 ## Backlog
 
@@ -74,7 +75,7 @@ Planned work that isn't started yet.
 - CI: `.github/workflows/sgnl-ci.yml` runs Go tests with `-race`, golangci-lint, REUSE and yamllint, and the frontend
   build, tests and ESLint. It runs every migration up, one version down, and up again on real PostgreSQL and MySQL,
   then manages users and groups with the CLI on both (`sgnl/ci-storage-engines.sh`; upstream's unit tests only execute
-  the SQLite SQL). It also runs the M1 exit test (`sgnl/m1/run.sh`) against a live instance. It also builds the linux/amd64 image. It mirrors what upstream's Buildkite pipeline runs
+  the SQLite SQL). It also runs the end-to-end tests (`sgnl/e2e/run.sh`) against a live instance. It also builds the linux/amd64 image. It mirrors what upstream's Buildkite pipeline runs
   (`authelia-scripts ci`, `.buildkite/steps/lint.sh`).
 - Nightly drift check: `.github/workflows/sgnl-upstream-nightly.yml` merges upstream `master` into `sgnl` inside the
   runner (never pushed) and runs the same CI. A red run means the next sync has work.
@@ -206,7 +207,7 @@ from a local Keycloak 26.8.2 with a throwaway user, same password policy as prod
 6. **Image: builds for linux/amd64** from `sgnl/Dockerfile` (local buildx, `build-info` reports linux/amd64,
    untagged clean, extra `sgnl`).
 
-### M1 exit test (2026-11-23, `sgnl/m1/run.sh`, also run by CI)
+### M1 exit test (2026-11-23, `sgnl/e2e/run.sh`, also run by CI)
 
 A live instance with the database backend and a throwaway SQLite database. The agent is a client-credentials client
 with both admin scopes. 23 of 23 checks pass:
@@ -226,7 +227,7 @@ with both admin scopes. 23 of 23 checks pass:
 
 Also verified by hand on a live instance: after a user is disabled, forward-auth and OIDC authorize on an existing
 session are refused, userinfo with an existing access token returns 401, passkey login checks the user too (in the
-code), and password reset sends nothing. Re-enabling the user restores the refresh token. A storage outage is not
+code), and password reset sends nothing. A storage outage is not
 mistaken for a deleted user: forward-auth returns an error and keeps the session (`handler_authz_authn.go`).
 
 Not covered yet:

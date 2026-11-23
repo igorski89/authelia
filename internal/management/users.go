@@ -64,6 +64,13 @@ var (
 	ErrConflict = errors.New("conflict")
 )
 
+// Sessions counts and destroys the portal sessions of a user. The server's session provider implements it; the CLI
+// has none when sessions are kept in the memory of the running server.
+type Sessions interface {
+	CountByUsername(ctx context.Context, username string) (count int, err error)
+	DestroyByUsername(ctx context.Context, username string) (destroyed int, err error)
+}
+
 // PasswordPolicy checks a plain password before it is hashed.
 type PasswordPolicy interface {
 	Check(password string) (err error)
@@ -71,13 +78,15 @@ type PasswordPolicy interface {
 
 // Service manages the users and groups of the database authentication backend.
 type Service struct {
-	store  storage.Provider
-	hash   algorithm.Hash
-	policy PasswordPolicy
+	store    storage.Provider
+	sessions Sessions
+	hash     algorithm.Hash
+	policy   PasswordPolicy
 }
 
-// New returns a new Service. The password policy is optional.
-func New(config *schema.AuthenticationBackendDatabase, store storage.Provider, policy PasswordPolicy) (service *Service, err error) {
+// New returns a new Service. The password policy and the sessions are optional; without the sessions, revoking a
+// user leaves its portal sessions, which are still refused once the user is disabled or deleted.
+func New(config *schema.AuthenticationBackendDatabase, store storage.Provider, policy PasswordPolicy, sessions Sessions) (service *Service, err error) {
 	if config == nil {
 		return nil, fmt.Errorf("the database authentication backend is not configured")
 	}
@@ -86,7 +95,7 @@ func New(config *schema.AuthenticationBackendDatabase, store storage.Provider, p
 		return nil, fmt.Errorf("the database authentication backend requires the storage provider")
 	}
 
-	service = &Service{store: store, policy: policy}
+	service = &Service{store: store, policy: policy, sessions: sessions}
 
 	if service.hash, err = authentication.NewFileCryptoHashFromConfig(config.Password); err != nil {
 		return nil, err
@@ -108,6 +117,23 @@ type User struct {
 	HasPassword bool      `json:"has_password"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+
+	// Credentials are the kinds of credentials the user has: password, webauthn (passkeys and security keys), totp,
+	// and duo. Only GetUser fills them.
+	Credentials []string `json:"credentials,omitempty"`
+
+	// Sessions is the number of portal sessions of the user. Only GetUser fills it, and only when the sessions can be
+	// reached.
+	Sessions *int `json:"sessions,omitempty"`
+}
+
+// Revocation reports what revoking a user did.
+type Revocation struct {
+	// Sessions is the number of portal sessions destroyed, or nil when the sessions can't be reached from here.
+	Sessions *int `json:"sessions"`
+
+	// Tokens is the number of OAuth 2.0 and OpenID Connect 1.0 sessions and pre-configured consents revoked.
+	Tokens int64 `json:"tokens"`
 }
 
 // Group is a group of the database authentication backend.
@@ -194,11 +220,47 @@ func (s *Service) CreateUser(ctx context.Context, in NewUser) (user *User, err e
 		return nil, wrap(err)
 	}
 
-	return s.GetUser(ctx, username)
+	return s.getUser(ctx, username)
 }
 
-// GetUser returns a user.
+// GetUser returns a user with its kinds of credentials and, when the sessions can be reached, its number of portal
+// sessions.
 func (s *Service) GetUser(ctx context.Context, username string) (user *User, err error) {
+	if user, err = s.getUser(ctx, username); err != nil {
+		return nil, err
+	}
+
+	var info model.UserInfo
+
+	if info, err = s.store.LoadUserInfo(ctx, user.Username); err != nil {
+		return nil, err
+	}
+
+	user.Credentials = []string{}
+
+	for _, credential := range []struct {
+		name string
+		has  bool
+	}{{"password", user.HasPassword}, {"webauthn", info.HasWebAuthn}, {"totp", info.HasTOTP}, {"duo", info.HasDuo}} {
+		if credential.has {
+			user.Credentials = append(user.Credentials, credential.name)
+		}
+	}
+
+	if s.sessions != nil {
+		var count int
+
+		if count, err = s.sessions.CountByUsername(ctx, user.Username); err != nil {
+			return nil, err
+		}
+
+		user.Sessions = &count
+	}
+
+	return user, nil
+}
+
+func (s *Service) getUser(ctx context.Context, username string) (user *User, err error) {
 	var row *model.AuthenticationUser
 
 	if row, err = s.store.LoadAuthenticationUser(ctx, username); err != nil {
@@ -206,6 +268,36 @@ func (s *Service) GetUser(ctx context.Context, username string) (user *User, err
 	}
 
 	return newUser(row), nil
+}
+
+// RevokeUser ends everything the user is logged in with: its portal sessions (when they can be reached) and its
+// OAuth 2.0 and OpenID Connect 1.0 tokens and pre-configured consent. When the client identifier isn't empty only the
+// tokens of that client are revoked and the portal sessions are kept. JWT access tokens which an app validates itself
+// stay valid until they expire. The user may be disabled or deleted, so it is not looked up.
+func (s *Service) RevokeUser(ctx context.Context, username, clientID string) (revocation *Revocation, err error) {
+	username = model.CanonicalAuthenticationUsername(username)
+
+	if err = validateUsername(username); err != nil {
+		return nil, err
+	}
+
+	revocation = &Revocation{}
+
+	if revocation.Tokens, err = s.store.RevokeOAuth2SessionsByUsername(ctx, username, clientID); err != nil {
+		return nil, err
+	}
+
+	if s.sessions != nil && clientID == "" {
+		var destroyed int
+
+		if destroyed, err = s.sessions.DestroyByUsername(ctx, username); err != nil {
+			return revocation, err
+		}
+
+		revocation.Sessions = &destroyed
+	}
+
+	return revocation, nil
 }
 
 // ListUsers returns a page of users ordered by username. A zero limit lists DefaultPageSize users.
@@ -286,7 +378,15 @@ func (s *Service) UpdateUser(ctx context.Context, username string, changes UserC
 		return nil, wrap(err)
 	}
 
-	return s.GetUser(ctx, canonical)
+	// Disabling a user ends everything it is logged in with. It runs after the user is disabled, so nothing new can be
+	// issued in between.
+	if changes.Disabled != nil && *changes.Disabled {
+		if _, err = s.RevokeUser(ctx, canonical, ""); err != nil {
+			return nil, fmt.Errorf("the user was disabled but revoking its sessions and tokens failed: %w", err)
+		}
+	}
+
+	return s.getUser(ctx, canonical)
 }
 
 // SetPassword sets the password of a user. An empty Password removes it, so the user can only log in another way.
@@ -300,13 +400,26 @@ func (s *Service) SetPassword(ctx context.Context, username string, password Pas
 	return wrap(s.store.UpdateAuthenticationUserPassword(ctx, username, digest.String))
 }
 
-// DeleteUser deletes a user and the second factors and links which only make sense for it: passkeys and other
+// DeleteUser deletes a user, ends everything it is logged in with (see RevokeUser), and deletes the second factors and
+// links which only make sense for it: passkeys and other
 // WebAuthn credentials, the TOTP configuration, recovery codes, the preferred Duo device, and external identity links.
 // The username is recorded so it is never used again; its subject identifiers are kept for the same reason. All of it
 // happens in one transaction.
 func (s *Service) DeleteUser(ctx context.Context, username string) (err error) {
 	username = model.CanonicalAuthenticationUsername(username)
 
+	if err = s.deleteUser(ctx, username); err != nil {
+		return err
+	}
+
+	if _, err = s.RevokeUser(ctx, username, ""); err != nil {
+		return fmt.Errorf("the user was deleted but revoking its sessions and tokens failed: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) deleteUser(ctx context.Context, username string) (err error) {
 	return wrap(s.transaction(ctx, func(ctx context.Context) (err error) {
 		if err = s.store.DeleteAuthenticationUser(ctx, username); err != nil {
 			return err
@@ -380,13 +493,31 @@ func (s *Service) ListGroups(ctx context.Context) (groups []Group, err error) {
 	return groups, nil
 }
 
-// GroupMembers returns the usernames of the members of a group ordered by username.
-func (s *Service) GroupMembers(ctx context.Context, name string) (usernames []string, err error) {
+// GroupMembers returns the members of a group ordered by username.
+func (s *Service) GroupMembers(ctx context.Context, name string) (members []User, err error) {
+	var usernames []string
+
 	if usernames, err = s.store.LoadAuthenticationGroupMembers(ctx, name); err != nil {
 		return nil, wrap(err)
 	}
 
-	return usernames, nil
+	members = make([]User, 0, len(usernames))
+
+	for _, username := range usernames {
+		var user *User
+
+		switch user, err = s.getUser(ctx, username); {
+		case errors.Is(err, ErrNotFound):
+			// A member whose row is not valid is left out, as it is everywhere else.
+			continue
+		case err != nil:
+			return nil, err
+		}
+
+		members = append(members, *user)
+	}
+
+	return members, nil
 }
 
 // DeleteGroup deletes a group and its memberships.

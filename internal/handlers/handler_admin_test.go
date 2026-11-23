@@ -376,7 +376,7 @@ func newTestAdminService(t *testing.T) *management.Service {
 
 	t.Cleanup(func() { _ = store.Close() })
 
-	service, err := management.New(&schema.AuthenticationBackendDatabase{Password: schema.DefaultCIPasswordConfig}, store, nil)
+	service, err := management.New(&schema.AuthenticationBackendDatabase{Password: schema.DefaultCIPasswordConfig}, store, nil, nil)
 	require.NoError(t, err)
 
 	return service
@@ -412,7 +412,7 @@ func TestAdminUsersAndGroupsHandlers(t *testing.T) {
 		{"ShouldRemovePassword", AdminUserPasswordDELETE(service), map[string]string{"username": "jane.doe"}, "", "", "", http.StatusNoContent, ``},
 		{"ShouldAddToGroup", AdminUserGroupPUT(service), map[string]string{"username": "ops@example.org", "group": "staff"}, "", "", "", http.StatusNoContent, ``},
 		{"ShouldRefuseMissingGroup", AdminUserGroupPUT(service), map[string]string{"username": "ops@example.org", "group": "missing"}, "", "", "", http.StatusNotFound, `"error":"not_found"`},
-		{"ShouldListMembers", AdminGroupMembersGET(service), map[string]string{"group": "staff"}, "", "", "", http.StatusOK, `{"members":["jane.doe","ops@example.org"]}`},
+		{"ShouldListMembers", AdminGroupMembersGET(service), map[string]string{"group": "staff"}, "", "", "", http.StatusOK, `"members":[{"username":"jane.doe"`},
 		{"ShouldRemoveFromGroup", AdminUserGroupDELETE(service), map[string]string{"username": "ops@example.org", "group": "staff"}, "", "", "", http.StatusNoContent, ``},
 		{"ShouldListUsers", AdminUsersGET(service), nil, "limit=1&page=1", "", "", http.StatusOK, `"users":[{"username":"ops@example.org"`},
 		{"ShouldRefuseBadLimit", AdminUsersGET(service), nil, "limit=abc", "", "", http.StatusBadRequest, `must be an integer`},
@@ -462,7 +462,7 @@ func TestAdminHandlersReportServerErrorsWithoutDetails(t *testing.T) {
 	mock := mocks.NewMockAutheliaCtx(t)
 	defer mock.Close()
 
-	service, err := management.New(&schema.AuthenticationBackendDatabase{Password: schema.DefaultCIPasswordConfig}, mock.StorageMock, nil)
+	service, err := management.New(&schema.AuthenticationBackendDatabase{Password: schema.DefaultCIPasswordConfig}, mock.StorageMock, nil, nil)
 	require.NoError(t, err)
 
 	mock.StorageMock.EXPECT().LoadAuthenticationGroups(gomock.Any()).Return(nil, errors.New("connection refused to 10.0.0.1"))

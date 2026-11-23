@@ -47,17 +47,17 @@ func newTestService(t *testing.T) (*Service, storage.Provider) {
 
 	t.Cleanup(func() { _ = store.Close() })
 
-	service, err := New(&schema.AuthenticationBackendDatabase{Password: schema.DefaultCIPasswordConfig}, store, testPolicy{})
+	service, err := New(&schema.AuthenticationBackendDatabase{Password: schema.DefaultCIPasswordConfig}, store, testPolicy{}, nil)
 	require.NoError(t, err)
 
 	return service, store
 }
 
 func TestNewRequiresConfigAndStore(t *testing.T) {
-	_, err := New(nil, nil, nil)
+	_, err := New(nil, nil, nil, nil)
 	assert.EqualError(t, err, "the database authentication backend is not configured")
 
-	_, err = New(&schema.AuthenticationBackendDatabase{}, nil, nil)
+	_, err = New(&schema.AuthenticationBackendDatabase{}, nil, nil, nil)
 	assert.EqualError(t, err, "the database authentication backend requires the storage provider")
 }
 
@@ -215,7 +215,10 @@ func TestServiceUsers(t *testing.T) {
 
 		members, err := service.GroupMembers(ctx, "users")
 		require.NoError(t, err)
-		assert.Equal(t, []string{"invited", "john.smith"}, members)
+		require.Len(t, members, 2)
+		assert.Equal(t, "invited", members[0].Username)
+		assert.Equal(t, "john.smith", members[1].Username)
+		assert.Equal(t, "invited@example.com", members[0].Email)
 
 		require.NoError(t, service.RemoveUserFromGroup(ctx, "invited", "users"))
 
@@ -257,4 +260,67 @@ func TestServiceUsers(t *testing.T) {
 
 		assert.ErrorIs(t, service.DeleteUser(ctx, "john.smith"), ErrNotFound)
 	})
+}
+
+type testSessions struct {
+	sessions map[string]int
+}
+
+func (s *testSessions) CountByUsername(_ context.Context, username string) (int, error) {
+	return s.sessions[username], nil
+}
+
+func (s *testSessions) DestroyByUsername(_ context.Context, username string) (int, error) {
+	n := s.sessions[username]
+
+	delete(s.sessions, username)
+
+	return n, nil
+}
+
+func TestServiceRevokeUser(t *testing.T) {
+	_, store := newTestService(t)
+
+	sessions := &testSessions{sessions: map[string]int{"john": 2, "jane": 1}}
+
+	service, err := New(&schema.AuthenticationBackendDatabase{Password: schema.DefaultCIPasswordConfig}, store, nil, sessions)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	_, err = service.CreateUser(ctx, NewUser{Username: "john", Email: "john@example.com"})
+	require.NoError(t, err)
+
+	_, err = service.CreateUser(ctx, NewUser{Username: "jane", Email: "jane@example.com"})
+	require.NoError(t, err)
+
+	user, err := service.GetUser(ctx, "john")
+	require.NoError(t, err)
+	require.NotNil(t, user.Sessions)
+	assert.Equal(t, 2, *user.Sessions)
+	assert.Equal(t, []string{}, user.Credentials)
+
+	revocation, err := service.RevokeUser(ctx, "john", "app")
+	require.NoError(t, err)
+	assert.Nil(t, revocation.Sessions, "revoking one client keeps the portal sessions")
+	assert.Equal(t, 2, sessions.sessions["john"])
+
+	revocation, err = service.RevokeUser(ctx, "JOHN", "")
+	require.NoError(t, err)
+	require.NotNil(t, revocation.Sessions)
+	assert.Equal(t, 2, *revocation.Sessions)
+
+	_, err = service.RevokeUser(ctx, "not valid", "")
+	assert.ErrorIs(t, err, ErrInvalid)
+
+	disabled := true
+
+	_, err = service.UpdateUser(ctx, "jane", UserChanges{Disabled: &disabled})
+	require.NoError(t, err)
+	assert.Equal(t, 0, sessions.sessions["jane"], "disabling a user ends its sessions")
+
+	sessions.sessions["john"] = 3
+
+	require.NoError(t, service.DeleteUser(ctx, "john"))
+	assert.Equal(t, 0, sessions.sessions["john"], "deleting a user ends its sessions")
 }

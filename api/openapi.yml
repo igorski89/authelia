@@ -3393,6 +3393,51 @@ paths:
           $ref: '#/components/responses/adminNotFound'
       security:
         - admin_bearer: []
+  /api/admin/users/{username}/logout:
+    parameters:
+      - $ref: '#/components/parameters/adminUsername'
+    post:
+      operationId: postAdminUserLogout
+      summary: Log Out User
+      description: >
+        Ends everything the user is logged in with: portal sessions, OAuth 2.0 and OpenID Connect 1.0 tokens, and
+        pre-configured consent. With a client_id only the tokens of that client are revoked and the portal sessions are
+        kept. Disabling or deleting a user does this too. JWT access tokens which an app validates itself stay valid
+        until they expire.
+      tags:
+        - Administration
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                client_id:
+                  type: string
+      responses:
+        "200":
+          description: Successful Operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: integer
+                    nullable: true
+                    description: Portal sessions destroyed, or null when only one client's tokens were revoked.
+                  tokens:
+                    type: integer
+                    description: OAuth 2.0 and OpenID Connect 1.0 sessions and pre-configured consents revoked.
+        "400":
+          $ref: '#/components/responses/adminBadRequest'
+        "401":
+          $ref: '#/components/responses/adminUnauthorized'
+        "403":
+          $ref: '#/components/responses/adminForbidden'
+      security:
+        - admin_bearer: []
   /api/admin/users/{username}/groups/{group}:
     parameters:
       - $ref: '#/components/parameters/adminUsername'
@@ -3524,7 +3569,7 @@ paths:
                   members:
                     type: array
                     items:
-                      type: string
+                      $ref: '#/components/schemas/admin.User'
         "401":
           $ref: '#/components/responses/adminUnauthorized'
         "403":
@@ -3799,6 +3844,14 @@ components:
         updated_at:
           type: string
           format: date-time
+        credentials:
+          type: array
+          description: The kinds of credentials of the user (password, webauthn, totp, duo). Only when getting one user.
+          items:
+            type: string
+        sessions:
+          type: integer
+          description: The number of portal sessions of the user. Only when getting one user.
     admin.NewUser:
       type: object
       required:

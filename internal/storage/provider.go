@@ -131,6 +131,10 @@ type Provider interface {
 	// RemoveAuthenticationUserGroup removes a user of the database authentication backend from a group.
 	RemoveAuthenticationUserGroup(ctx context.Context, username, group string) (err error)
 
+	// RevokeOAuth2SessionsByUsername revokes every OAuth 2.0 and OpenID Connect 1.0 session and pre-configured consent
+	// of the user, or only those of the given client when the client identifier isn't empty.
+	RevokeOAuth2SessionsByUsername(ctx context.Context, username, clientID string) (revoked int64, err error)
+
 	/*
 		Implementation for User TOTP Configurations.
 	*/

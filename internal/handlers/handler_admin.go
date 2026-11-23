@@ -45,7 +45,12 @@ type AdminGroupsResponse struct {
 
 // AdminGroupMembersResponse is the body of a successful response from the AdminGroupMembersGET handler.
 type AdminGroupMembersResponse struct {
-	Members []string `json:"members"`
+	Members []management.User `json:"members"`
+}
+
+// AdminUserLogoutRequest is the optional body of a request to the AdminUserLogoutPOST handler.
+type AdminUserLogoutRequest struct {
+	ClientID string `json:"client_id,omitempty"`
 }
 
 // AdminGroupRequest is the body of a request to the AdminGroupsPOST handler.
@@ -202,6 +207,33 @@ func AdminUserPasswordDELETE(service *management.Service) middlewares.RequestHan
 		logAdminChange(ctx, "Removed the password of user", "username", username)
 
 		ctx.SetStatusCode(fasthttp.StatusNoContent)
+	}
+}
+
+// AdminUserLogoutPOST ends everything a user is logged in with: portal sessions, OAuth 2.0 and OpenID Connect 1.0
+// tokens, and pre-configured consent. With a client_id in the body only the tokens of that client are revoked.
+func AdminUserLogoutPOST(service *management.Service) middlewares.RequestHandler {
+	return func(ctx *middlewares.AutheliaCtx) {
+		var in AdminUserLogoutRequest
+
+		if len(ctx.PostBody()) != 0 {
+			if err := decodeAdminBody(ctx, &in); err != nil {
+				replyAdminError(ctx, err)
+				return
+			}
+		}
+
+		username := adminPathValue(ctx, "username")
+
+		revocation, err := service.RevokeUser(ctx, username, in.ClientID)
+		if err != nil {
+			replyAdminError(ctx, err)
+			return
+		}
+
+		logAdminChange(ctx, "Logged out user", "username", username, "client", in.ClientID)
+
+		replyAdmin(ctx, fasthttp.StatusOK, revocation)
 	}
 }
 

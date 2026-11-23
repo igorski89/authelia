@@ -72,6 +72,7 @@ for engine in postgres mysql; do
   ./authelia users update bob --email BOB2@example.com --disable "${users[@]}"
   expect_output 'Groups: +Users, admins$' ./authelia users get alice "${users[@]}"
   expect_output '^bob +bob2@example.com .*true' ./authelia users list "${users[@]}"
+  expect_output '^Revoked [0-9]+ token session' ./authelia users logout bob "${users[@]}"
   ./authelia users delete alice --force "${users[@]}"
   expect_fail ./authelia users create alice --email new@example.com --no-password "${users[@]}"
   ./authelia storage encryption rotate hmac authentication-user --force "${users[@]}"

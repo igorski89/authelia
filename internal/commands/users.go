@@ -6,6 +6,7 @@ package commands
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -15,9 +16,14 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/authelia/authelia/v4/internal/clock"
+	"github.com/authelia/authelia/v4/internal/configuration/schema"
 	"github.com/authelia/authelia/v4/internal/configuration/validator"
 	"github.com/authelia/authelia/v4/internal/management"
 	"github.com/authelia/authelia/v4/internal/middlewares"
+	"github.com/authelia/authelia/v4/internal/random"
+	"github.com/authelia/authelia/v4/internal/session"
+	"github.com/authelia/authelia/v4/internal/storage"
 )
 
 const (
@@ -34,6 +40,7 @@ const (
 	cmdFlagNameNoPassword     = "no-password"
 	cmdFlagNameLimit          = "limit"
 	cmdFlagNamePage           = "page"
+	cmdFlagNameClientID       = "client-id"
 
 	cmdAutheliaUsersShort = "Manage the users of the database authentication backend"
 	cmdAutheliaUsersLong  = `Manage the users of the database authentication backend.
@@ -76,6 +83,7 @@ func newUsersCmd(ctx *CmdCtx) (cmd *cobra.Command) {
 		newUsersUpdateCmd(ctx),
 		newUsersPasswordCmd(ctx),
 		newUsersDeleteCmd(ctx),
+		newUsersLogoutCmd(ctx),
 	)
 
 	return cmd
@@ -188,6 +196,18 @@ The user's passkeys and other WebAuthn credentials, TOTP configuration, recovery
 	return cmd
 }
 
+func newUsersLogoutCmd(ctx *CmdCtx) (cmd *cobra.Command) {
+	cmd = newSimpleCmd("logout <username>", "End everything a user is logged in with", cobra.ExactArgs(1), ctx.UsersLogoutRunE)
+
+	cmd.Long = `End everything a user is logged in with.
+
+Revokes the user's OAuth 2.0 and OpenID Connect 1.0 tokens and pre-configured consent, and destroys its portal sessions when they are kept in the storage database (the default). With --client-id only the tokens of that client are revoked. Disabling or deleting a user does this too.`
+
+	cmd.Flags().String(cmdFlagNameClientID, "", "only revoke the tokens of this OAuth 2.0 client")
+
+	return cmd
+}
+
 func addUsersPasswordFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(cmdFlagNamePasswordStdin, false, "read the password from the first line of the standard input")
 	cmd.Flags().String(cmdFlagNamePasswordDigest, "", "a password digest in the PHC string format to store as it is")
@@ -224,6 +244,10 @@ func (ctx *CmdCtx) ConfigValidateUsersRunE(_ *cobra.Command, _ []string) (err er
 	validator.ValidatePasswordConfiguration(&ctx.config.AuthenticationBackend.Database.Password, ctx.cconfig.validator)
 	validator.ValidatePasswordPolicy(&ctx.config.PasswordPolicy, ctx.cconfig.validator)
 
+	if len(ctx.config.Session.Cookies) != 0 {
+		validator.ValidateSession(ctx.config, ctx.cconfig.validator)
+	}
+
 	if errs := ctx.cconfig.validator.Errors(); len(errs) != 0 {
 		return errors.Join(errs...)
 	}
@@ -231,8 +255,44 @@ func (ctx *CmdCtx) ConfigValidateUsersRunE(_ *cobra.Command, _ []string) (err er
 	return nil
 }
 
-func (ctx *CmdCtx) managementService() (*management.Service, error) {
-	return management.New(ctx.config.AuthenticationBackend.Database, ctx.providers.StorageProvider, middlewares.NewPasswordPolicyProvider(ctx.config.PasswordPolicy))
+func (ctx *CmdCtx) managementService() (service *management.Service, err error) {
+	var sessions management.Sessions
+
+	if sessions, err = ctx.usersSessions(); err != nil {
+		return nil, err
+	}
+
+	return management.New(ctx.config.AuthenticationBackend.Database, ctx.providers.StorageProvider, middlewares.NewPasswordPolicyProvider(ctx.config.PasswordPolicy), sessions)
+}
+
+// usersSessions returns the portal sessions when they are kept in the storage database, which is the default. Sessions
+// kept in a cache can't be reached reliably from the CLI (the memory cache belongs to the running server), so there are
+// none and revoking a user leaves its portal sessions; they are refused anyway once the user is disabled or deleted.
+func (ctx *CmdCtx) usersSessions() (sessions management.Sessions, err error) {
+	switch ctx.config.Session.Storage {
+	case schema.SessionStorageInternal, "":
+		break
+	default:
+		return nil, nil
+	}
+
+	if len(ctx.config.Session.Cookies) == 0 {
+		return nil, nil
+	}
+
+	var key []byte
+
+	if key, err = ctx.providers.StorageProvider.LoadHMACKey(ctx, "session", sha256.BlockSize); err != nil {
+		return nil, fmt.Errorf("error loading the session key: %w", err)
+	}
+
+	var provider session.Provider
+
+	if provider, err = session.NewProvider(ctx.config, key, clock.New(), random.New(), storage.NewSessionRepository(ctx.providers.StorageProvider)); err != nil {
+		return nil, fmt.Errorf("error initializing the sessions: %w", err)
+	}
+
+	return provider, nil
 }
 
 // withManagementService runs fn with the management service and closes the storage afterwards.
@@ -429,6 +489,37 @@ func (ctx *CmdCtx) UsersDeleteRunE(cmd *cobra.Command, args []string) (err error
 	})
 }
 
+// UsersLogoutRunE is the RunE for the authelia users logout command.
+func (ctx *CmdCtx) UsersLogoutRunE(cmd *cobra.Command, args []string) (err error) {
+	var clientID string
+
+	if clientID, err = cmd.Flags().GetString(cmdFlagNameClientID); err != nil {
+		return err
+	}
+
+	return ctx.withManagementService(func(service *management.Service) (err error) {
+		var revocation *management.Revocation
+
+		if revocation, err = service.RevokeUser(ctx, args[0], clientID); err != nil {
+			return err
+		}
+
+		writeRevocation(cmd.OutOrStdout(), args[0], revocation)
+
+		return nil
+	})
+}
+
+func writeRevocation(w io.Writer, username string, revocation *management.Revocation) {
+	_, _ = fmt.Fprintf(w, "Revoked %d token session(s) and pre-configured consent(s) of user '%s'.\n", revocation.Tokens, username)
+
+	if revocation.Sessions == nil {
+		_, _ = fmt.Fprintln(w, "Portal sessions are kept in a cache this command can't reach; they are refused once the user is disabled or deleted, or use the administration API to end them.")
+	} else {
+		_, _ = fmt.Fprintf(w, "Destroyed %d portal session(s).\n", *revocation.Sessions)
+	}
+}
+
 // GroupsListRunE is the RunE for the authelia groups list command.
 func (ctx *CmdCtx) GroupsListRunE(cmd *cobra.Command, _ []string) (err error) {
 	return ctx.withManagementService(func(service *management.Service) (err error) {
@@ -475,14 +566,14 @@ func (ctx *CmdCtx) GroupsDeleteRunE(cmd *cobra.Command, args []string) (err erro
 // GroupsMembersRunE is the RunE for the authelia groups members command.
 func (ctx *CmdCtx) GroupsMembersRunE(cmd *cobra.Command, args []string) (err error) {
 	return ctx.withManagementService(func(service *management.Service) (err error) {
-		var members []string
+		var members []management.User
 
 		if members, err = service.GroupMembers(ctx, args[0]); err != nil {
 			return err
 		}
 
 		for _, member := range members {
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), member)
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), member.Username)
 		}
 
 		return nil
@@ -602,6 +693,12 @@ func writeUser(w io.Writer, user *management.User) {
 	_, _ = fmt.Fprintf(tw, "Groups:\t%s\n", strings.Join(user.Groups, ", "))
 	_, _ = fmt.Fprintf(tw, "Disabled:\t%t\n", user.Disabled)
 	_, _ = fmt.Fprintf(tw, "Has Password:\t%t\n", user.HasPassword)
+	_, _ = fmt.Fprintf(tw, "Credentials:\t%s\n", strings.Join(user.Credentials, ", "))
+
+	if user.Sessions != nil {
+		_, _ = fmt.Fprintf(tw, "Sessions:\t%d\n", *user.Sessions)
+	}
+
 	_, _ = fmt.Fprintf(tw, "Created:\t%s\n", user.CreatedAt.Format("2006-01-02 15:04:05 MST"))
 	_, _ = fmt.Fprintf(tw, "Updated:\t%s\n", user.UpdatedAt.Format("2006-01-02 15:04:05 MST"))
 
