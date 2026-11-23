@@ -57,7 +57,7 @@ func NewClient(config schema.IdentityProvidersOpenIDConnectClient, c *schema.Ide
 		ClientAssertionJWTValidationHeaderAllowEmptyType: config.ClientAssertionJWTValidationHeaderAllowEmptyType,
 		ClientAssertionJWTValidationHeaderAllowTypes:     config.ClientAssertionJWTValidationHeaderAllowTypes,
 
-		ConsentPolicy:         NewClientConsentPolicy(config.ConsentMode, config.ConsentPreConfiguredDuration),
+		ConsentPolicy:         newClientConsentPolicyOfflineAccess(NewClientConsentPolicy(config.ConsentMode, config.ConsentPreConfiguredDuration), config.ConsentImplicitOfflineAccess),
 		RequestedAudienceMode: NewClientRequestedAudienceMode(config.RequestedAudienceMode),
 		RequestedResourceMode: NewClientRequestedResourceMode(config.RequestedResourceMode),
 		AudienceStrategy:      NewAudienceStrategy(config.AudienceStrategy),

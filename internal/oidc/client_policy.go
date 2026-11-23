@@ -121,6 +121,9 @@ func (p *ClientAuthorizationPolicyRule) IsMatch(subject authorization.Subject) (
 type ClientConsentPolicy struct {
 	Mode     ClientConsentMode
 	Duration time.Duration
+
+	// ImplicitOfflineAccess allows the implicit mode to grant the offline scopes without the consent screen.
+	ImplicitOfflineAccess bool
 }
 
 // String returns the string representation of the ClientConsentMode.

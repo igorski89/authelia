@@ -91,6 +91,15 @@ identity_providers:
         response_types: ['code']
         authorization_policy: 'one_factor'
         consent_mode: 'implicit'
+      - client_id: 'implicit-offline'
+        client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
+        redirect_uris: ['https://app.example.com/cb']
+        scopes: ['openid', 'profile', 'email', 'groups', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        authorization_policy: 'one_factor'
+        consent_mode: 'implicit'
+        consent_implicit_offline_access: true
       - client_id: 'agent'
         client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
         grant_types: ['client_credentials']

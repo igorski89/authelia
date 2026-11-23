@@ -56,7 +56,7 @@ func handleOAuth2AuthorizationConsent(ctx *middlewares.AutheliaCtx, issuer *url.
 		switch {
 		case mode == oidc.ClientConsentModeExplicit:
 			handler = handleOAuth2AuthorizationConsentModeExplicit
-		case oidc.RequesterRequiresExplicitConsent(requester):
+		case oidc.RequesterRequiresExplicitConsentForClient(client, requester):
 			ctx.GetLogger().Debugf("Authorization Request with id '%s' on client with id '%s' using policy '%s' was determined to require explicit consent due to requirements requested by the client", requester.GetID(), client.GetID(), policy.Name)
 
 			handler = handleOAuth2AuthorizationConsentModeExplicit

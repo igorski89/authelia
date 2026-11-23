@@ -118,6 +118,8 @@ func handleOAuth2AuthorizationConsentModeImplicitWithID(ctx *middlewares.Autheli
 		oidc.ConsentGrantImplicit(consent, nil, subject, ctx.GetClock().Now())
 	}
 
+	oidc.ConsentGrantImplicitOfflineAccess(client, consent)
+
 	if err = ctx.Providers.StorageProvider.SaveOAuth2ConsentSessionResponse(ctx, consent, false); err != nil {
 		ctx.GetLogger().Errorf(logFmtErrConsentSaveSessionResponse, requester.GetID(), client.GetID(), client.GetConsentPolicy(), consent.ChallengeID, err)
 
@@ -176,6 +178,8 @@ func handleOAuth2AuthorizationConsentModeImplicitWithoutID(ctx *middlewares.Auth
 	} else {
 		oidc.ConsentGrantImplicit(consent, nil, subject, ctx.GetClock().Now())
 	}
+
+	oidc.ConsentGrantImplicitOfflineAccess(client, consent)
 
 	if err = ctx.Providers.StorageProvider.SaveOAuth2ConsentSessionResponse(ctx, consent, false); err != nil {
 		ctx.GetLogger().Errorf(logFmtErrConsentSaveSessionResponse, requester.GetID(), client.GetID(), client.GetConsentPolicy(), consent.ChallengeID, err)

@@ -354,6 +354,7 @@ var Keys = []string{
 	"identity_providers.oidc.clients[].client_id",
 	"identity_providers.oidc.clients[].client_name",
 	"identity_providers.oidc.clients[].client_secret",
+	"identity_providers.oidc.clients[].consent_implicit_offline_access",
 	"identity_providers.oidc.clients[].consent_mode",
 	"identity_providers.oidc.clients[].device_code_verification_uri_complete",
 	"identity_providers.oidc.clients[].disable_refresh_token_rotation",

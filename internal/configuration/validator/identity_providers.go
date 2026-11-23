@@ -1138,6 +1138,8 @@ func validateOIDCClientConsentMode(c int, config *schema.IdentityProvidersOpenID
 	if config.Clients[c].ConsentMode == oidc.ClientConsentModePreConfigured.String() && config.Clients[c].ConsentPreConfiguredDuration == nil {
 		config.Clients[c].ConsentPreConfiguredDuration = schema.DefaultOpenIDConnectClientConfiguration.ConsentPreConfiguredDuration
 	}
+
+	validateOIDCClientConsentImplicitOfflineAccess(c, config, validator)
 }
 
 //nolint:gocyclo
