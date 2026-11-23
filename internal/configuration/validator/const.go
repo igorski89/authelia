@@ -573,8 +573,8 @@ const (
 
 	errFmtServerAddress = "server: option 'address' with value '%s' is invalid: %w"
 
-	errFmtServerPathNotEndForwardSlash = "server: option 'address' must be a single subpath (i.e. '%s'), but '%s' contains multiple segments"
-	errFmtServerPathAlphaNumeric       = "server: option 'address' must have a path with only alphanumeric characters but it's configured as '%s'"
+	errFmtServerPathEmptySegment = "server: option 'address' must not have empty path segments or a trailing slash but it's configured as '%s'"
+	errFmtServerPathCharacters   = "server: option 'address' must have a path with only alphanumeric characters, '-' and '_' in each segment but it's configured as '%s'"
 
 	errFmtServerEndpointsAuthzOptionLegacy               = "server: endpoints: authz: %s: option '%s' must not be configured for the 'Legacy' implementation"
 	errFmtServerEndpointsAuthzHeaderInvalidName          = "server: endpoints: authz: %s: headers: %s: header name must only contain valid header name characters"

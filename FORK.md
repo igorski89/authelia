@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 # SGNL's Authelia fork
 
 This is a fork of [authelia/authelia](https://github.com/authelia/authelia), branch `sgnl`, kept in sync with upstream
-`master`. It adds what SGNL needs to run its login on Authelia alone: users in SQLite, an admin API, invite onboarding,
+`master`. It adds what SGNL needs to run its login on Authelia alone: users in the database, an admin API, invite onboarding,
 revocation, and a SAML IdP. **Not affiliated with or endorsed by the Authelia project.** For Authelia itself, use
 upstream.
 
@@ -18,32 +18,35 @@ Branches:
 
 ## Principles
 
-1. **Upstream-shaped.** Fork features sit behind upstream's own interfaces and designs (user provider, the user
-   management interface proposed in authelia/authelia#12654, session repository, identity verification), so each can
-   converge when upstream ships its version.
-2. **Own migration track.** Fork tables live in a second track (table `sgnl_migrations`, files under
-   `internal/storage/migrations/sgnl/`), run right after upstream's. Fork tables are prefixed `sgnl_`. Fork migrations
-   never alter upstream tables or use upstream's version numbers.
-3. **No carried open upstream PRs.** Upstream code arrives only through the sync, once merged. Where we need an open
-   PR's feature, we mirror its interface in our own package.
-4. **SQLite only** for fork code, written in portable SQL.
-5. **Own config namespace:** a top-level `sgnl:` key. The only exception is `authentication_backend.sgnl_sql`.
-6. **New packages, thin seams.** Fork code lives in `internal/sgnl/...`. Upstream files get registration lines only, and
-   every touched upstream file is listed below.
-7. **API first.** An admin REST API and a CLI are the product; a web admin UI is optional.
+Decided by igor on 2026-11-23. They replace the earlier "thin seams" approach.
 
-## Touched upstream files
+1. **Built as a native part of Authelia.** Features use Authelia's own packages, naming, config structure,
+   database and migration track, as if upstream had designed them. There are no fork-only namespaces, files or
+   config sections. The aim is the best architecture, not the smallest diff.
+2. **One database, one migration track.** New tables are ordinary migrations in
+   `internal/storage/migrations/<engine>/` for all three engines (upstream's tests require the same versions for all).
+   **Numbering rule:**
+   - Until a production database exists (cutover, M5): fork migrations stay numbered last. When a sync brings in
+     upstream migrations, renumber ours after them.
+   - After cutover: fork numbers are frozen, and incoming upstream migrations are renumbered after ours (with a
+     check that they still apply).
+   - Upstream's contiguity test (`internal/storage/migrations_test.go`) turns the nightly drift check red on a
+     collision.
+3. **Kept in sync with upstream `master`** (assumed to continue): merges, weekly and on releases. Syncs will conflict
+   more often than with a thin fork; that cost is accepted. When upstream ships an equivalent feature, we compare the
+   two and switch to theirs if we're ready to merge into it.
+4. **Existing per-user data stays keyed by username.** No re-keying of upstream tables or foreign keys onto them.
+5. **API first.** An admin REST API and a CLI are the product; a web admin UI is optional.
 
-Every upstream file the fork changes, with the reason. Each sync checks this list. Keep it short.
+## Changes from upstream
 
-| File | Change | Since |
+Every feature the fork adds or changes, with the upstream files it touches. Each sync checks this list.
+
+| Feature | Upstream files changed | Since |
 |---|---|---|
-| `internal/configuration/validator/server.go` | The server path check calls `sgnlValidateServerPath` (one line), so the path may have several segments with `-`/`_`, e.g. `/realms/<realm>`, to keep Keycloak's issuer. The rule itself is in the fork-only `sgnl_server_path.go` | 2026-11-23 |
-| `internal/configuration/validator/server_test.go` | 3 tests that asserted upstream's single-segment rule: messages updated, `/app-le` → `/app.le`, `/app/le` → `/app//le` | 2026-11-23 |
-| `internal/configuration/provider_test.go` | `TestShouldHandleSubPathVariations`: trailing-slash message updated; `/auth/abc` now valid | 2026-11-23 |
+| Multi-segment server path (`server.address` path such as `/realms/<realm>`, keeps Keycloak's issuer) | `internal/configuration/validator/{server.go,const.go,server_test.go}`, `internal/configuration/provider_test.go`, `internal/middlewares/strip_path_test.go` | 2026-11-23 |
 
-Fork-only files (no upstream counterpart): `FORK.md`, `sgnl/`, `internal/**/sgnl_*.go`, `.github/workflows/sgnl-*.yml`,
-`.github/actions/sgnl-checkout/`.
+Fork-only build files: `FORK.md`, `sgnl/` (image), `.github/workflows/sgnl-*.yml`, `.github/actions/sgnl-checkout/`.
 
 ## Build
 
@@ -109,8 +112,8 @@ from a local Keycloak 26.8.2 with a throwaway user, same password policy as prod
      settings) are not tested yet.
    - Caveat: the server also answers on `/` with issuer `https://<host>`, so the reverse proxy must route only the
      prefix (or redirect `/` to it).
-   - Consequence: keeping the Keycloak issuer needs a fork change to one upstream file (the validator). igor approved
-     it on 2026-11-23, and it is done (see "Touched upstream files"). Upstream may accept it (multi-segment base paths).
+   - Consequence: keeping the Keycloak issuer needs a change to the validator. igor approved it on 2026-11-23, and it is
+     done (see "Changes from upstream").
 2. **Keycloak password hashes: usable as-is.**
    - Keycloak 26.8.2 stores argon2id, v=19, m=7168, t=5, p=1, 32-byte hash, with salt and hash as standard base64 in
      `secret_data`.

@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/authelia/authelia/v4/internal/configuration/schema"
 	"github.com/authelia/authelia/v4/internal/utils"
@@ -113,7 +114,7 @@ func ValidateServerAddress(config *schema.Configuration, validator *schema.Struc
 	case subpath == "":
 		config.Server.Address.SetPath("/")
 	case subpath != "/":
-		sgnlValidateServerPath(subpath, validator) // SGNL fork: multi-segment paths, see sgnl_server_path.go.
+		validateServerPath(subpath, validator)
 	}
 
 	if config.Server.Address.IsUnixDomainSocket() || config.Server.Address.IsFileDescriptor() {
@@ -579,4 +580,29 @@ func validateServerEndpointsAuthzStrategies(config *schema.Configuration, name s
 	}
 
 	config.Server.Endpoints.Authz[name] = endpoint
+}
+
+// validateServerPath checks the path the server is served under. It may have several segments (e.g. '/realms/example'),
+// each non-empty and made only of letters, digits, '-' and '_'. This keeps the path free of characters that are
+// special in URLs or in the regular expression [middlewares.StripPath] builds from it.
+func validateServerPath(subpath string, validator *schema.StructValidator) {
+	for _, segment := range strings.Split(strings.TrimPrefix(subpath, "/"), "/") {
+		if segment == "" {
+			validator.Push(fmt.Errorf(errFmtServerPathEmptySegment, subpath))
+
+			return
+		}
+
+		for _, r := range segment {
+			if !isServerPathRune(r) {
+				validator.Push(fmt.Errorf(errFmtServerPathCharacters, subpath))
+
+				return
+			}
+		}
+	}
+}
+
+func isServerPathRune(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsNumber(r) || r == '-' || r == '_'
 }

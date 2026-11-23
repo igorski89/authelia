@@ -154,14 +154,14 @@ func TestShouldHandleSubPathVariations(t *testing.T) {
 			"tcp://127.0.0.1:9091/auth/",
 			"/auth/",
 			[]string{
-				"server: option 'address' must not have empty path segments or a trailing slash but it's configured as '/auth/'", // SGNL fork.
+				"server: option 'address' must not have empty path segments or a trailing slash but it's configured as '/auth/'",
 			},
 		},
 		{
 			"ShouldErrorTrailingSlashSubPath",
 			"tcp://127.0.0.1:9091/auth/abc",
 			"/auth/abc",
-			nil, // SGNL fork: multi-segment paths are allowed (validator/sgnl_server_path.go).
+			nil,
 		},
 	}
 
