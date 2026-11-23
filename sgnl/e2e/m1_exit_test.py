@@ -36,6 +36,10 @@ check('ID token carries groups, email, name, preferred_username',
 check('ID token issuer is the realm path', idt.get('iss') == ISS, idt.get('iss'))
 check('access token is a JWT (OpenCloud-style clients)', t['access_token'].count('.') == 2)
 
+idt_default = claims(authorize(u, 'test')['id_token'])
+check('a client without its own claims policy gets the default one (groups in the ID token)',
+      idt_default.get('groups') == ['staff'] and idt_default.get('email') == 'kc.user@example.com', json.dumps(idt_default))
+
 st, _, b = u.req('POST', '/api/oidc/introspection', {'token': t['access_token']}, basic('app'), form=True)
 check('introspection reports the access token active', st == 200 and json.loads(b).get('active') is True, b[:120])
 

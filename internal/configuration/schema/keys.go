@@ -412,6 +412,7 @@ var Keys = []string{
 	"identity_providers.oidc.cors.allowed_origins",
 	"identity_providers.oidc.cors.allowed_origins_from_client_redirect_uris",
 	"identity_providers.oidc.cors.endpoints",
+	"identity_providers.oidc.default_claims_policy",
 	"identity_providers.oidc.discovery_signed_response_alg",
 	"identity_providers.oidc.discovery_signed_response_key_id",
 	"identity_providers.oidc.enable_access_token_uri_query_parameter",

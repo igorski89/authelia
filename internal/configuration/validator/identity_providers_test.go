@@ -6799,3 +6799,46 @@ func TestValidateOIDCClientScopesSpecialAdmin(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateOIDCDefaultClaimsPolicy(t *testing.T) {
+	newConfig := func(def string) *schema.Configuration {
+		return &schema.Configuration{
+			IdentityProviders: schema.IdentityProviders{
+				OIDC: &schema.IdentityProvidersOpenIDConnect{
+					HMACSecret:          "rLABDrx87et5KvRHVUgTm3pezWWd8LMN",
+					JSONWebKeys:         []schema.JWK{{Key: keyRSA2048, CertificateChain: certRSA2048}},
+					DefaultClaimsPolicy: def,
+					ClaimsPolicies: map[string]schema.IdentityProvidersOpenIDConnectClaimsPolicy{
+						"apps":  {IDToken: []string{oidc.ClaimGroups, oidc.ClaimEmail}},
+						"other": {},
+					},
+					Clients: []schema.IdentityProvidersOpenIDConnectClient{
+						{ID: "plain", Secret: tOpenIDConnectPBKDF2ClientSecret, RedirectURIs: []string{"https://app.example.com/cb"}},
+						{ID: "own", Secret: tOpenIDConnectPBKDF2ClientSecret, RedirectURIs: []string{"https://app.example.com/cb"}, ClaimsPolicy: "other"},
+					},
+				},
+			},
+		}
+	}
+
+	t.Run("ShouldApplyTheDefaultToClientsWithoutTheirOwn", func(t *testing.T) {
+		config := newConfig("apps")
+		validator := schema.NewStructValidator()
+
+		ValidateIdentityProviders(NewValidateCtx(), config, validator)
+
+		assert.Len(t, validator.Errors(), 0)
+		assert.Equal(t, "apps", config.IdentityProviders.OIDC.Clients[0].ClaimsPolicy)
+		assert.Equal(t, "other", config.IdentityProviders.OIDC.Clients[1].ClaimsPolicy)
+	})
+
+	t.Run("ShouldRefuseAnUnknownDefault", func(t *testing.T) {
+		config := newConfig("missing")
+		validator := schema.NewStructValidator()
+
+		ValidateIdentityProviders(NewValidateCtx(), config, validator)
+
+		require.NotEmpty(t, validator.Errors())
+		assert.EqualError(t, validator.Errors()[0], "identity_providers: oidc: option 'default_claims_policy' must be the name of a configured claims policy but it's configured as 'missing'")
+	})
+}

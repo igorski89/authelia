@@ -168,6 +168,12 @@ func validateOIDCLifespans(config *schema.Configuration, validator *schema.Struc
 
 //nolint:gocyclo
 func validateOIDCClaims(config *schema.Configuration, validator *schema.StructValidator) {
+	if name := config.IdentityProviders.OIDC.DefaultClaimsPolicy; name != "" {
+		if _, ok := config.IdentityProviders.OIDC.ClaimsPolicies[name]; !ok {
+			validator.Push(fmt.Errorf("identity_providers: oidc: option 'default_claims_policy' must be the name of a configured claims policy but it's configured as '%s'", name))
+		}
+	}
+
 	for name, policy := range config.IdentityProviders.OIDC.ClaimsPolicies {
 		var claims []string
 
@@ -738,6 +744,11 @@ func validateOIDCClients(ctx *ValidateCtx, config *schema.IdentityProvidersOpenI
 //nolint:gocyclo
 func validateOIDCClient(ctx *ValidateCtx, c int, config *schema.IdentityProvidersOpenIDConnect, validator *schema.StructValidator, errDeprecatedFunc func()) {
 	ccg := utils.IsStringInSlice(oidc.GrantTypeClientCredentials, config.Clients[c].GrantTypes)
+
+	// A client without its own claims policy gets the default one, which is then validated like its own.
+	if config.Clients[c].ClaimsPolicy == "" && config.DefaultClaimsPolicy != "" {
+		config.Clients[c].ClaimsPolicy = config.DefaultClaimsPolicy
+	}
 
 	switch {
 	case ccg:
