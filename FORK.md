@@ -268,8 +268,10 @@ Not covered yet:
   - Keycloak ran at `localhost`, which Authelia can't serve (a cookie domain needs a period), so the test imports for the
     RP ID `id.example.com` and gives the virtual authenticator the same credentials (ID and key pair) for it.
 - **RP ID:** the import refuses an RP ID which differs from the realm's `webAuthnPolicyRpId` (when set), and the CLI one
-  which isn't the host of a configured `authelia_url` or a configured WebAuthn relying party. Production's realm value
-  is to be confirmed before the production import (empty means Keycloak used its hostname, which Authelia keeps).
+  which isn't the host of a configured `authelia_url` or a configured WebAuthn relying party. SGNL's production realm
+  leaves both WebAuthn RP IDs empty (Keycloak used its hostname, which Authelia keeps), its hashes are all argon2, it
+  has no credential types the import can't take, and its passkeys are second factor only (confirmed by sgnl-01,
+  2026-11-24), so the import needs no `--skip-unsupported` and no passkey login.
 - **Passkey login policy:** Keycloak's `webauthn` credentials are second factors, and are imported as such. With
   passkey login enabled, Authelia only offers them for passkey login with `experimental_enable_passkey_upgrade`.
 
