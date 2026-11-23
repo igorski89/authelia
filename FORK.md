@@ -40,6 +40,7 @@ Every upstream file the fork changes, with the reason. Each sync checks this lis
 |---|---|---|
 | `internal/configuration/validator/server.go` | The server path check calls `sgnlValidateServerPath` (one line), so the path may have several segments with `-`/`_`, e.g. `/realms/<realm>`, to keep Keycloak's issuer. The rule itself is in the fork-only `sgnl_server_path.go` | 2026-11-23 |
 | `internal/configuration/validator/server_test.go` | 3 tests that asserted upstream's single-segment rule: messages updated, `/app-le` → `/app.le`, `/app/le` → `/app//le` | 2026-11-23 |
+| `internal/configuration/provider_test.go` | `TestShouldHandleSubPathVariations`: trailing-slash message updated; `/auth/abc` now valid | 2026-11-23 |
 
 Fork-only files (no upstream counterpart): `FORK.md`, `sgnl/`, `internal/**/sgnl_*.go`, `.github/workflows/sgnl-*.yml`,
 `.github/actions/sgnl-checkout/`.
@@ -64,6 +65,7 @@ Fork-only files (no upstream counterpart): `FORK.md`, `sgnl/`, `internal/**/sgnl
   - left active: `codeql-analysis` (weekly), `slsa` (fires only on upstream-style `vX.Y.Z` tags);
   - the files themselves are untouched.
 - Local Go: the toolchain is pinned in `go.mod`. Use `mise x go@1.27.4 -- go ...` so that no tool file lands in the tree.
+  Lint like CI: `mise x go@1.27.4 golangci-lint@2.15.0 -- golangci-lint run`.
 
 ## Sync log
 

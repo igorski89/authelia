@@ -14,13 +14,21 @@ import (
 
 // SGNL fork: the server path may have several segments (e.g. '/realms/example-realm'), so an existing issuer that
 // lives under such a path can be kept. Upstream allows a single alphanumeric segment only. Each segment must be
-// non-empty and contain only letters, digits (as upstream: unicode.IsLetter, unicode.IsNumber), '-' and '_', which keeps the path free of characters that are special
-// in URLs or in the regular expression middlewares.StripPath builds from it.
+// non-empty and contain only letters and digits (as upstream: [unicode.IsLetter], [unicode.IsNumber]), '-' and '_'.
+// This keeps the path free of characters that are special in URLs or in the regular expression that
+// middlewares.StripPath builds from it.
 const (
 	errFmtSGNLServerPathEmptySegment = "server: option 'address' must not have empty path segments or a trailing " +
 		"slash but it's configured as '%s'"
 	errFmtSGNLServerPathCharacters = "server: option 'address' must have a path with only alphanumeric characters, " +
 		"'-' and '_' in each segment but it's configured as '%s'"
+)
+
+// Upstream's messages for the single-segment rule are no longer used. They are referenced here instead of being
+// deleted from const.go, so that const.go (changed often upstream) stays untouched.
+var (
+	_ = errFmtServerPathNotEndForwardSlash
+	_ = errFmtServerPathAlphaNumeric
 )
 
 func sgnlValidateServerPath(subpath string, validator *schema.StructValidator) {
