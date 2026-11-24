@@ -422,6 +422,26 @@ func (ctx *AutheliaCtx) GetSession() (userSession session.UserSession, err error
 		return provider.NewDefault(), nil
 	}
 
+	// A session from a login before its user was logged out, disabled, or deleted is over, also when a request which was
+	// already running saved it again after the revocation destroyed it.
+	if !current.IsAnonymous() {
+		var revoked bool
+
+		if revoked, err = IsUserRevoked(ctx, ctx.Providers.StorageProvider, current.Username, "", current.GetFirstFactorAuthn()); err != nil {
+			return userSession, err
+		}
+
+		if revoked {
+			ctx.Logger.WithField("username", current.Username).Info("The session of the user was revoked since it was created and is destroyed")
+
+			if err = provider.Destroy(ctx); err != nil {
+				ctx.Logger.WithError(err).Error("Unable to destroy a revoked user session")
+			}
+
+			return provider.NewDefault(), nil
+		}
+	}
+
 	return *current, nil
 }
 

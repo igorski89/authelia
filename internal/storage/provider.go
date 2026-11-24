@@ -139,6 +139,12 @@ type Provider interface {
 	// yet, used or not, and its pending one-time codes, or only the identity verification links of the given action.
 	RevokeIdentityVerificationsByUsername(ctx context.Context, username, action string) (revoked int64, err error)
 
+	// SaveUserRevocation marks the revocation of a user's sessions and tokens, of one client when clientID isn't empty.
+	SaveUserRevocation(ctx context.Context, username, clientID string, revokedAt time.Time) (err error)
+
+	// LoadUserRevocations loads the revocation marks of a user.
+	LoadUserRevocations(ctx context.Context, username string) (revocations []model.UserRevocation, err error)
+
 	// SaveWebAuthnCredentialImported marks a WebAuthn credential as imported with unknown backup flags.
 	SaveWebAuthnCredentialImported(ctx context.Context, kid, source string) (err error)
 

@@ -46,7 +46,7 @@ func TestServiceAudit(t *testing.T) {
 
 	// Newest first. Disabling and deleting both log the user out.
 	assert.Equal(t, []string{
-		AuditActionUserLogout, AuditActionUserDelete, AuditActionGroupMemberRemove, AuditActionUserPasswordSet,
+		AuditActionUserDelete, AuditActionUserLogout, AuditActionGroupMemberRemove, AuditActionUserPasswordSet,
 		AuditActionUserLogout, AuditActionUserDisable, AuditActionUserUpdate, AuditActionUserCreate,
 	}, actions)
 

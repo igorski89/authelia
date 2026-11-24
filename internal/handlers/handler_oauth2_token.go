@@ -119,11 +119,21 @@ func handleOAuth2TokenUserPermitted(ctx *middlewares.AutheliaCtx, rw http.Respon
 		return false
 	}
 
-	_, err := oidc.UserDetailerFromSubjectString(ctx, session.Subject)
+	detailer, err := oidc.UserDetailerFromSubjectString(ctx, session.Subject)
+
+	var revoked bool
+
+	if err == nil {
+		// A grant from a login before the user was logged out of the client is over, also when a request which was
+		// already running issued it after the revocation.
+		revoked, err = middlewares.IsUserRevoked(ctx, ctx.Providers.StorageProvider, detailer.GetUsername(), client.GetID(), session.IDTokenClaims().GetAuthTimeSafe())
+	}
 
 	switch {
-	case err == nil:
+	case err == nil && !revoked:
 		return false
+	case err == nil:
+		err = oauthelia2.ErrInvalidGrant.WithHint("The grant was revoked since the user logged in.")
 	case errors.Is(err, authentication.ErrUserNotFound):
 		err = oauthelia2.ErrInvalidGrant.WithHint("The user the grant was issued to is no longer permitted to log in.")
 	default:

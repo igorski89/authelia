@@ -230,6 +230,9 @@ func NewMockAutheliaCtx(t *testing.T) *MockAutheliaCtx {
 	mockAuthelia.StorageMock = NewMockStorage(mockAuthelia.Ctrl)
 	providers.StorageProvider = mockAuthelia.StorageMock
 
+	// Sessions and grants are checked against the revocation marks of their user; by default there are none.
+	mockAuthelia.StorageMock.EXPECT().LoadUserRevocations(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+
 	mockAuthelia.NotifierMock = NewMockNotifier(mockAuthelia.Ctrl)
 	providers.Notifier = mockAuthelia.NotifierMock
 

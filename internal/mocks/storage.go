@@ -1225,6 +1225,21 @@ func (mr *MockStorageMockRecorder) LoadUserOpaqueIdentifiers(ctx any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadUserOpaqueIdentifiers", reflect.TypeOf((*MockStorage)(nil).LoadUserOpaqueIdentifiers), ctx)
 }
 
+// LoadUserRevocations mocks base method.
+func (m *MockStorage) LoadUserRevocations(ctx context.Context, username string) ([]model.UserRevocation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LoadUserRevocations", ctx, username)
+	ret0, _ := ret[0].([]model.UserRevocation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// LoadUserRevocations indicates an expected call of LoadUserRevocations.
+func (mr *MockStorageMockRecorder) LoadUserRevocations(ctx, username any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadUserRevocations", reflect.TypeOf((*MockStorage)(nil).LoadUserRevocations), ctx, username)
+}
+
 // LoadWebAuthnCredentialByID mocks base method.
 func (m *MockStorage) LoadWebAuthnCredentialByID(ctx context.Context, id int) (*model.WebAuthnCredential, error) {
 	m.ctrl.T.Helper()
@@ -1822,6 +1837,20 @@ func (m *MockStorage) SaveUserOpaqueIdentifier(ctx context.Context, subject mode
 func (mr *MockStorageMockRecorder) SaveUserOpaqueIdentifier(ctx, subject any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveUserOpaqueIdentifier", reflect.TypeOf((*MockStorage)(nil).SaveUserOpaqueIdentifier), ctx, subject)
+}
+
+// SaveUserRevocation mocks base method.
+func (m *MockStorage) SaveUserRevocation(ctx context.Context, username, clientID string, revokedAt time.Time) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SaveUserRevocation", ctx, username, clientID, revokedAt)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SaveUserRevocation indicates an expected call of SaveUserRevocation.
+func (mr *MockStorageMockRecorder) SaveUserRevocation(ctx, username, clientID, revokedAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveUserRevocation", reflect.TypeOf((*MockStorage)(nil).SaveUserRevocation), ctx, username, clientID, revokedAt)
 }
 
 // SaveWebAuthnCredential mocks base method.

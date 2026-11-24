@@ -65,6 +65,7 @@ func TestEngines(t *testing.T) {
 			testEngineSAMLFlows(t, provider)
 			testEngineAuthenticationLogs(t, provider)
 			testEngineWebAuthnCredentialImported(t, provider)
+			testEngineUserRevocations(t, provider)
 		})
 	}
 
@@ -151,4 +152,22 @@ func testEngineWebAuthnCredentialImported(t *testing.T, provider Provider) {
 	imported, err = provider.IsWebAuthnCredentialImported(ctx, kid)
 	require.NoError(t, err)
 	assert.False(t, imported)
+}
+
+func testEngineUserRevocations(t *testing.T, provider Provider) {
+	ctx := context.Background()
+	username := "revoked-" + uuid.NewString()[:8]
+	at := time.Now().UTC().Truncate(time.Second)
+
+	require.NoError(t, provider.SaveUserRevocation(ctx, username, "", at.Add(-time.Hour)))
+	require.NoError(t, provider.SaveUserRevocation(ctx, username, "", at))
+	require.NoError(t, provider.SaveUserRevocation(ctx, username, "app", at))
+
+	revocations, err := provider.LoadUserRevocations(ctx, username)
+	require.NoError(t, err)
+	require.Len(t, revocations, 2, "a later mark replaces an earlier one")
+
+	for _, revocation := range revocations {
+		assert.True(t, revocation.RevokedAt.Equal(at), revocation.RevokedAt)
+	}
 }

@@ -145,7 +145,23 @@ func (s *CookieSessionAuthnStrategy) Get(ctx AuthzContext, manager session.Manag
 
 			invalid = true
 		default:
-			modified = handleAuthnCookieRefreshTTL(ctx, &userSession, s.refresh) || modified
+			var revoked bool
+
+			// A session from a login before its user was logged out is over, also when a request which was already
+			// running saved it again after the logout destroyed it.
+			if !userSession.IsAnonymous() {
+				if revoked, err = middlewares.IsUserRevoked(ctx, ctx.GetProviders().StorageProvider, userSession.Username, "", userSession.GetFirstFactorAuthn()); err != nil {
+					return authn, fmt.Errorf("failed to check the revocation of the session: %w", err)
+				}
+			}
+
+			if revoked {
+				ctx.GetLogger().WithField("username", userSession.Username).Info("The session of the user was revoked since it was created")
+
+				invalid = true
+			} else {
+				modified = handleAuthnCookieRefreshTTL(ctx, &userSession, s.refresh) || modified
+			}
 		}
 	}
 

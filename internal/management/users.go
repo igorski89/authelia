@@ -284,45 +284,74 @@ func (s *Service) RevokeUser(ctx context.Context, username, clientID string) (re
 		return nil, err
 	}
 
-	revocation = &Revocation{}
-
 	err = s.transaction(ctx, func(ctx context.Context) (err error) {
-		if revocation.Tokens, err = s.store.RevokeOAuth2SessionsByUsername(ctx, username, clientID); err != nil {
-			return err
-		}
+		revocation, err = s.revoke(ctx, username, clientID)
 
-		details := map[string]any{"tokens": revocation.Tokens}
-
-		// A full logout also revokes pending links and codes sent by email, such as an invite, so none outlives it.
-		if clientID == "" {
-			if revocation.Links, err = s.store.RevokeIdentityVerificationsByUsername(ctx, username, ""); err != nil {
-				return err
-			}
-
-			details["links"] = revocation.Links
-		}
-
-		if clientID != "" {
-			details["client_id"] = clientID
-		}
-
-		return s.audit(ctx, AuditActionUserLogout, username, "", details)
+		return err
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	if s.sessions != nil && clientID == "" {
-		var destroyed int
-
-		if destroyed, err = s.sessions.DestroyByUsername(ctx, username); err != nil {
-			return revocation, err
-		}
-
-		revocation.Sessions = &destroyed
+	if err = s.destroySessions(ctx, username, clientID, revocation); err != nil {
+		return revocation, err
 	}
 
 	return revocation, nil
+}
+
+// revoke revokes in the transaction of ctx what RevokeUser revokes, except the portal sessions, which are kept outside
+// the database transaction. It first marks the revocation, so a session or grant saved by a request which was already
+// running is refused too: such a request can't create anything which outlives the revocation.
+func (s *Service) revoke(ctx context.Context, username, clientID string) (revocation *Revocation, err error) {
+	revocation = &Revocation{}
+
+	if err = s.store.SaveUserRevocation(ctx, username, clientID, time.Now()); err != nil {
+		return nil, err
+	}
+
+	if revocation.Tokens, err = s.store.RevokeOAuth2SessionsByUsername(ctx, username, clientID); err != nil {
+		return nil, err
+	}
+
+	details := map[string]any{"tokens": revocation.Tokens}
+
+	// A full logout also revokes pending links and codes sent by email, such as an invite, so none outlives it.
+	if clientID == "" {
+		if revocation.Links, err = s.store.RevokeIdentityVerificationsByUsername(ctx, username, ""); err != nil {
+			return nil, err
+		}
+
+		details["links"] = revocation.Links
+	}
+
+	if clientID != "" {
+		details["client_id"] = clientID
+	}
+
+	if err = s.audit(ctx, AuditActionUserLogout, username, "", details); err != nil {
+		return nil, err
+	}
+
+	return revocation, nil
+}
+
+// destroySessions destroys the portal sessions of a full revocation, once its transaction is committed. A session
+// this misses is refused anyway, as it is older than the revocation mark.
+func (s *Service) destroySessions(ctx context.Context, username, clientID string, revocation *Revocation) (err error) {
+	if s.sessions == nil || clientID != "" || revocation == nil {
+		return nil
+	}
+
+	var destroyed int
+
+	if destroyed, err = s.sessions.DestroyByUsername(ctx, username); err != nil {
+		return err
+	}
+
+	revocation.Sessions = &destroyed
+
+	return nil
 }
 
 // ListUsers returns a page of users ordered by username. A zero limit lists DefaultPageSize users.
@@ -356,7 +385,10 @@ func (s *Service) ListUsers(ctx context.Context, limit, page int) (users []User,
 // UpdateUser changes the profile of a user, and disables or enables it. The user is read and changed in one
 // transaction, so concurrent updates of different fields don't undo each other.
 func (s *Service) UpdateUser(ctx context.Context, username string, changes UserChanges) (user *User, err error) {
-	var canonical string
+	var (
+		canonical  string
+		revocation *Revocation
+	)
 
 	err = s.transaction(ctx, func(ctx context.Context) (err error) {
 		var current *model.AuthenticationUser
@@ -371,18 +403,24 @@ func (s *Service) UpdateUser(ctx context.Context, username string, changes UserC
 			return err
 		}
 
-		return s.updateDisabled(ctx, current, changes.Disabled)
+		if err = s.updateDisabled(ctx, current, changes.Disabled); err != nil {
+			return err
+		}
+
+		// Disabling a user ends everything it is logged in with, in the same transaction, so re-enabling it can't bring
+		// anything back.
+		if changes.Disabled != nil && *changes.Disabled {
+			revocation, err = s.revoke(ctx, canonical, "")
+		}
+
+		return err
 	})
 	if err != nil {
 		return nil, wrap(err)
 	}
 
-	// Disabling a user ends everything it is logged in with. It runs after the user is disabled, so nothing new can be
-	// issued in between.
-	if changes.Disabled != nil && *changes.Disabled {
-		if _, err = s.RevokeUser(ctx, canonical, ""); err != nil {
-			return nil, fmt.Errorf("the user was disabled but revoking its sessions and tokens failed: %w", err)
-		}
+	if err = s.destroySessions(ctx, canonical, "", revocation); err != nil {
+		return nil, fmt.Errorf("the user was disabled but destroying its portal sessions failed: %w", err)
 	}
 
 	return s.getUser(ctx, canonical)
@@ -485,20 +523,28 @@ func (s *Service) SetPassword(ctx context.Context, username string, password Pas
 func (s *Service) DeleteUser(ctx context.Context, username string) (err error) {
 	username = model.CanonicalAuthenticationUsername(username)
 
-	if err = s.deleteUser(ctx, username); err != nil {
+	var revocation *Revocation
+
+	if revocation, err = s.deleteUser(ctx, username); err != nil {
 		return err
 	}
 
-	if _, err = s.RevokeUser(ctx, username, ""); err != nil {
-		return fmt.Errorf("the user was deleted but revoking its sessions and tokens failed: %w", err)
+	if err = s.destroySessions(ctx, username, "", revocation); err != nil {
+		return fmt.Errorf("the user was deleted but destroying its portal sessions failed: %w", err)
 	}
 
 	return nil
 }
 
-func (s *Service) deleteUser(ctx context.Context, username string) (err error) {
-	return wrap(s.transaction(ctx, func(ctx context.Context) (err error) {
+// deleteUser deletes a user and everything keyed by its username, and revokes what it is logged in with, in one
+// transaction.
+func (s *Service) deleteUser(ctx context.Context, username string) (revocation *Revocation, err error) {
+	err = wrap(s.transaction(ctx, func(ctx context.Context) (err error) {
 		if err = s.store.DeleteAuthenticationUser(ctx, username); err != nil {
+			return err
+		}
+
+		if revocation, err = s.revoke(ctx, username, ""); err != nil {
 			return err
 		}
 
@@ -532,6 +578,8 @@ func (s *Service) deleteUser(ctx context.Context, username string) (err error) {
 
 		return s.audit(ctx, AuditActionUserDelete, username, "", nil)
 	}))
+
+	return revocation, err
 }
 
 // AddUserToGroup makes a user a member of a group.
