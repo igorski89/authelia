@@ -211,7 +211,7 @@ func (samlSessions) GetSession(rw http.ResponseWriter, r *http.Request, req *sam
 
 // GetForcedSession implements saml.ForceAuthnSessionProvider: a request with ForceAuthn ends the portal session and
 // sends the user to log in again, and once it is resumed it is answered for a login made after the request, as
-// Keycloak asks for the credentials again. A resumed request whose session is still older is refused, so it can't loop.
+// Keycloak asks for the credentials again.
 func (p samlSessions) GetForcedSession(rw http.ResponseWriter, r *http.Request, req *saml.IdpAuthnRequest) *saml.Session {
 	ctx, ok := r.Context().Value(ctxKeySAMLAutheliaCtx{}).(*middlewares.AutheliaCtx)
 	if !ok || req.ServiceProviderMetadata == nil {
@@ -220,16 +220,13 @@ func (p samlSessions) GetForcedSession(rw http.ResponseWriter, r *http.Request, 
 		return nil
 	}
 
+	// A resumed request is answered for a login made after it. Otherwise, as when a cross-site HTTP-POST request didn't
+	// carry the session cookie which the portal then resumed it with, the session is ended below and the user logs in:
+	// with the session gone this can't loop.
 	if created, resumed := r.Context().Value(ctxKeySAMLFlowCreatedAt{}).(time.Time); resumed {
-		userSession, err := ctx.GetSession()
-		if err == nil && !userSession.IsAnonymous() && !userSession.GetFirstFactorAuthn().Before(created.Truncate(time.Second)) {
+		if userSession, err := ctx.GetSession(); err == nil && !userSession.IsAnonymous() && !userSession.GetFirstFactorAuthn().Before(created.Truncate(time.Second)) {
 			return p.GetSession(rw, r, req)
 		}
-
-		ctx.GetLogger().WithField(logging.FieldUsername, userSession.Username).Error("Failed to resume a SAML authentication request with ForceAuthn as the user did not log in again")
-		http.Error(rw, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-
-		return nil
 	}
 
 	sp := ctx.Providers.SAML.ServiceProvider(req.ServiceProviderMetadata.EntityID)

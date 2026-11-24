@@ -115,6 +115,17 @@ const v2 = body2 ? await verdict(body2) : {};
 check('a logged in user gets the response for a cross-site HTTP-POST request without logging in again',
   v2.name_id === 'samuser@example.com', `${p.url()} ${JSON.stringify(v2)} ${(await p.content()).slice(0, 300)}`);
 
+// 3. ForceAuthn from another site while logged in: the request carries no session cookie, the portal resumes it with the
+//    session, which is older than the request, so the session ends and the user logs in again.
+const forced = await (await fetch(`${SP}/start?binding=post&force=1`)).json();
+await p.goto('about:blank');
+await p.setContent(`<form method="post" action="${forced.url}">` +
+  Object.entries(forced.form).map(([k, val]) => `<input type="hidden" name="${k}" value="${val}">`).join('') +
+  '</form><script>document.forms[0].submit()</script>');
+const body3 = await waitForACS(40000);
+const v3 = body3 ? await verdict(body3) : {};
+check('ForceAuthn from another site asks a logged in user to log in again, then answers', v3.name_id === 'samuser@example.com', `${p.url()} ${JSON.stringify(v3)} ${(await p.content()).slice(0, 200)}`);
+
 await browser.close();
 console.log(`${results.filter(Boolean).length}/${results.length} passed`);
 process.exit(results.every(Boolean) ? 0 : 1);
