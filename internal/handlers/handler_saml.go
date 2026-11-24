@@ -71,6 +71,10 @@ func SAMLSSO(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Only a request which keeps a pending request counts against the rate limit (samlLoginRedirect), so a page which
+	// makes browsers send requests can't use up the limit of their address for users who are logged in.
+	ctx.SetUserValue(middlewares.UserValueRateLimitExempt, true)
+
 	// A pending request is kept for each anonymous request, so its size is bounded before anything else: the body, as
 	// the form is only parsed once, and every field the library takes a request from, including the SAMLRedirectQuery
 	// of an HTTP-POST, which carries a request of the HTTP-Redirect binding.
@@ -95,6 +99,10 @@ func SAMLSSO(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *http.Reque
 // SAMLSSOResumeGET resumes a SAML authentication request once the user has logged in: the request kept for the flow
 // is presented to the single sign-on endpoint again, as the form a login page would post. A flow can be used once.
 func SAMLSSOResumeGET(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *http.Request) {
+	// Resuming uses up a pending request rather than keeping one, so it doesn't count against the rate limit; a resumed
+	// request which keeps a new one does.
+	ctx.SetUserValue(middlewares.UserValueRateLimitExempt, true)
+
 	idp, ok := samlIdentityProvider(ctx, rw)
 	if !ok {
 		return
@@ -278,6 +286,9 @@ func samlLoginRedirect(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *
 
 		return
 	}
+
+	// Keeping a pending request counts against the rate limit of the single sign-on endpoints.
+	ctx.SetUserValue(middlewares.UserValueRateLimitExempt, false)
 
 	// Whichever binding or field the request came in, what is kept is bounded.
 	if len(req.RelayState) > samlidp.MaxRelayStateLength || len(form) > samlidp.MaxStoredRequestLength {
