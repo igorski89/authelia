@@ -64,6 +64,14 @@ func SAMLSSO(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// A pending request is kept for each anonymous request, so its size is bounded before anything else.
+	if err := r.ParseForm(); err != nil || len(r.Form.Get("SAMLRequest")) > samlidp.MaxRequestLength || len(r.Form.Get("RelayState")) > samlidp.MaxRelayStateLength {
+		ctx.GetLogger().WithError(err).Error("Error occurred handling a SAML authentication request: the request or its RelayState is too long")
+		http.Error(rw, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+
+		return
+	}
+
 	rw.Header().Set("Content-Security-Policy", samlidp.ContentSecurityPolicy)
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 

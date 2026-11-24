@@ -12,6 +12,8 @@ server:
       # The tests redeem many links from one address.
       reset_password_finish:
         enable: false
+      saml_single_sign_on:
+        enable: false
 log:
   level: debug
   file_path: '${DIR}/authelia.log'

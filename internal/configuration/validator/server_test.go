@@ -186,6 +186,14 @@ func TestShouldSetDefaultConfigRateLimits(t *testing.T) {
 						{Period: time.Hour, Requests: 60},
 					},
 				},
+				SAMLSingleSignOn: schema.ServerEndpointRateLimit{
+					IPv6Mask: 64,
+					Buckets: []schema.ServerEndpointRateLimitBucket{
+						{Period: 1 * time.Minute, Requests: 30},
+						{Period: 10 * time.Minute, Requests: 100},
+						{Period: time.Hour, Requests: 300},
+					},
+				},
 			},
 		},
 	}

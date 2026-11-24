@@ -433,13 +433,17 @@ func RegisterSAMLRoutes(r *router.Router, config *schema.Configuration, provider
 		WithPreMiddlewares(middlewares.SecurityHeadersBase, middlewares.SecurityHeadersNoStore).
 		Build()
 
+	// Every anonymous request keeps a pending request in the database, and every answered one a key in the replay store,
+	// so the single sign-on endpoints are rate limited by client address.
+	rateLimit := middlewares.NewRateLimiter(middlewares.WithRateLimitConfig(config.Server.Endpoints.RateLimits.SAMLSingleSignOn), middlewares.WithRateLimitCollector(providers.GarbageCollector)).Middleware()
+
 	metadata := bridge(middlewares.NewHTTPToAutheliaHandlerAdaptor(handlers.SAMLMetadataGET))
-	sso := bridge(middlewares.NewHTTPToAutheliaHandlerAdaptor(handlers.SAMLSSO))
+	sso := bridge(rateLimit(middlewares.NewHTTPToAutheliaHandlerAdaptor(handlers.SAMLSSO)))
 
 	r.GET(samlidp.EndpointPathMetadata, metadata)
 	r.GET(samlidp.EndpointPathSSO, sso)
 	r.POST(samlidp.EndpointPathSSO, sso)
-	r.GET(samlidp.EndpointPathSSO+"/resume", bridge(middlewares.NewHTTPToAutheliaHandlerAdaptor(handlers.SAMLSSOResumeGET)))
+	r.GET(samlidp.EndpointPathSSO+"/resume", bridge(rateLimit(middlewares.NewHTTPToAutheliaHandlerAdaptor(handlers.SAMLSSOResumeGET))))
 
 	if config.IdentityProviders.SAML.EnableKeycloakEndpoints {
 		r.GET(samlidp.EndpointPathKeycloakMetadata, metadata)

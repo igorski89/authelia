@@ -111,6 +111,7 @@ type ServerEndpointRateLimits struct {
 	OpenIDConnectRevocation                 ServerEndpointRateLimit `koanf:"openid_connect_revocation" yaml:"openid_connect_revocation,omitempty" toml:"openid_connect_revocation,omitempty" json:"openid_connect_revocation,omitempty" jsonschema:"title=OpenID Connect Revocation" jsonschema_description:"Configures the rate limiter which applies to the OpenID Connect 1.0 Revocation Endpoint."`
 	ExternalIdentityStart                   ServerEndpointRateLimit `koanf:"external_identity_start" yaml:"external_identity_start,omitempty" toml:"external_identity_start,omitempty" json:"external_identity_start,omitempty" jsonschema:"title=External Identity Start" jsonschema_description:"Configures the rate limiter which applies to the endpoint that initializes an external identity login."`
 	ExternalIdentityCallback                ServerEndpointRateLimit `koanf:"external_identity_callback" yaml:"external_identity_callback,omitempty" toml:"external_identity_callback,omitempty" json:"external_identity_callback,omitempty" jsonschema:"title=External Identity Callback" jsonschema_description:"Configures the rate limiter which applies to the redirect URI endpoint for external identity logins."`
+	SAMLSingleSignOn                        ServerEndpointRateLimit `koanf:"saml_single_sign_on" yaml:"saml_single_sign_on,omitempty" toml:"saml_single_sign_on,omitempty" json:"saml_single_sign_on,omitempty" jsonschema:"title=SAML Single Sign-On" jsonschema_description:"Configures the rate limiter which applies to the SAML 2.0 single sign-on endpoints, which keep a pending request for each anonymous one."`
 }
 
 // Endpoints returns a ServerEndpointRateLimitEndpoint for every configurable rate limiter in field order.
@@ -132,6 +133,7 @@ func (r *ServerEndpointRateLimits) Endpoints() []ServerEndpointRateLimitEndpoint
 		{Name: "openid_connect_revocation", Config: &r.OpenIDConnectRevocation},
 		{Name: "external_identity_start", Config: &r.ExternalIdentityStart},
 		{Name: "external_identity_callback", Config: &r.ExternalIdentityCallback},
+		{Name: "saml_single_sign_on", Config: &r.SAMLSingleSignOn},
 	}
 }
 
@@ -346,6 +348,13 @@ var DefaultServerConfiguration = Server{
 					{Period: 1, Requests: 3},  // 3 requests per 1.0x of identity_validation.elevated_session.elevation_lifespan.
 					{Period: 2, Requests: 5},  // 5 requests per 2.0x of identity_validation.elevated_session.elevation_lifespan.
 					{Period: 6, Requests: 15}, // 15 requests per 6.0x of identity_validation.elevated_session.elevation_lifespan.
+				},
+			},
+			SAMLSingleSignOn: ServerEndpointRateLimit{
+				Buckets: []ServerEndpointRateLimitBucket{
+					{Period: 1 * time.Minute, Requests: 30},
+					{Period: 10 * time.Minute, Requests: 100},
+					{Period: time.Hour, Requests: 300},
 				},
 			},
 			OpenIDConnectToken: ServerEndpointRateLimit{

@@ -42,6 +42,18 @@ const (
 
 	// maxAuthnRequestAge allows for a login which takes a while, such as registering a first passkey.
 	maxAuthnRequestAge = 15 * time.Minute
+
+	// replayStoreCapacity is the number of request IDs kept for replay detection, one per answered request for
+	// maxAuthnRequestAge. The store refuses requests when it is full, so it is several times the library's default; with
+	// the rate limit of the single sign-on endpoints one address can only hold a few hundred keys.
+	replayStoreCapacity = 4 * saml.DefaultMemoryReplayStoreCapacity
+
+	// MaxRelayStateLength is the longest RelayState accepted. SAML Bindings 3.4.3 limits it to 80 bytes, which
+	// several service providers exceed.
+	MaxRelayStateLength = 1024
+
+	// MaxRequestLength is the longest encoded SAMLRequest accepted.
+	MaxRequestLength = 16 * 1024
 )
 
 // Provider is the SAML 2.0 identity provider.
@@ -56,6 +68,9 @@ type Provider struct {
 
 	mu   sync.Mutex
 	idps map[string]*saml.IdentityProvider
+
+	// replay is shared by the identity providers of every issuer, which bounds its memory.
+	replay saml.ReplayStore
 }
 
 // ServiceProvider is a registered service provider with its metadata.
@@ -87,6 +102,7 @@ func New(config *schema.IdentityProvidersSAML) (provider *Provider, err error) {
 		intermediates:    certificates[1:],
 		serviceProviders: make(map[string]*ServiceProvider, len(config.ServiceProviders)),
 		idps:             map[string]*saml.IdentityProvider{},
+		replay:           saml.NewMemoryReplayStore(replayStoreCapacity),
 	}
 
 	for i := range config.ServiceProviders {
@@ -157,6 +173,7 @@ func (p *Provider) IdentityProvider(issuer *url.URL, sessions saml.SessionProvid
 		MaxAuthnRequestAge:      maxAuthnRequestAge,
 		Observer:                observer,
 		ResponseFormTemplate:    responseFormTemplate,
+		ReplayStore:             p.replay,
 	}
 
 	p.idps[key] = idp

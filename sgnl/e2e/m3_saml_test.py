@@ -177,6 +177,18 @@ for name, context, ok in [
     else:
         check(f'requested context {name}: NoAuthnContext', any(c.endswith(':NoAuthnContext') for c in result.get('status_codes') or []), result)
 
+# Bounded requests: a pending request is kept for each anonymous one.
+start = sp('sp1', 'GET', '/start?binding=post')
+form = dict(start['form'], RelayState='x' * 1025)
+st, _, _ = Client().req('POST', idp_path(start['url']), form, form=True)
+check('a RelayState longer than 1 KB is refused', st == 400, st)
+form = dict(start['form'], SAMLRequest='A' * (16 * 1024 + 1))
+st, _, _ = Client().req('POST', idp_path(start['url']), form, form=True)
+check('a SAMLRequest longer than 16 KB is refused', st == 400, st)
+form = dict(start['form'], RelayState='x' * 1024)
+st, h, _ = Client().req('POST', idp_path(start['url']), form, form=True)
+check('a RelayState of 1 KB is accepted', st == 303, st)
+
 # A logged in user gets the response at once, with the HTTP-POST binding and at Keycloak's path.
 st, _, page = send_request(user, 'sp1', binding='post')
 result = deliver('sp1', page)
