@@ -237,5 +237,9 @@ func TestClientIDMetadataDocumentsPolicy(t *testing.T) {
 		assert.ErrorIs(t, documents.policy(ctx, parse("https://claude.ai/c.json")), oauthelia2.ErrInvalidClient, "a new document over the cap of its host")
 		assert.NoError(t, documents.policy(ctx, parse("https://claude.ai/a.json")), "a cached document is still served")
 		assert.NoError(t, documents.policy(ctx, parse("https://ports.example/a.json")), "another host has its own cap")
+
+		require.NoError(t, documents.cache.SetClientIDMetadataDocument(ctx, &oauthelia2.ClientIDMetadataDocumentRecord{ID: "https://claude.ai/b.json", Domain: "claude.ai", Metadata: &oauthelia2.ClientRegistrationMetadata{}, ExpiresAt: time.Now().Add(-time.Minute)}))
+
+		assert.NoError(t, documents.policy(ctx, parse("https://claude.ai/c.json")), "an expired document doesn't count against the cap")
 	})
 }

@@ -367,13 +367,20 @@ func (c *clientIDMetadataDocumentCache) Has(id string) (has bool) {
 	return has
 }
 
-// CountHost returns the number of records whose client identifier has the host (with its port), unlike the library's
-// count, which is of a registrable domain.
+// CountHost returns the number of unexpired records whose client identifier has the host (with its port), unlike the
+// library's count, which is of a registrable domain.
 func (c *clientIDMetadataDocumentCache) CountHost(host string) (count int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	now := time.Now()
+
 	for id := range c.records {
+		// An expired record doesn't count, as the library only prunes records on a resolution the cap would refuse.
+		if expires := c.expires[id]; !expires.IsZero() && !expires.After(now) {
+			continue
+		}
+
 		if u, err := url.Parse(id); err == nil && u.Host == host {
 			count++
 		}
