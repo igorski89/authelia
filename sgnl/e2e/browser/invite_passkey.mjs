@@ -82,6 +82,9 @@ async function passkeyLogin() {
 }
 
 check('passkey login works', (await passkeyLogin()) >= 1);
+await api.post('/realms/test/api/admin/users/newbie/logout', { headers: A });
+await new Promise((resolve) => setTimeout(resolve, 1100));
+check('passkey login works after a logout', (await passkeyLogin()) >= 1);
 await api.patch('/realms/test/api/admin/users/newbie', { headers: A, data: { disabled: true } });
 check('passkey login is refused for a disabled user', (await passkeyLogin()) === 0);
 

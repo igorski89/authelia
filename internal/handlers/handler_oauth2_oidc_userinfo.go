@@ -125,14 +125,12 @@ func OpenIDConnectUserinfo(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter,
 		requests      map[string]*oidc.ClaimRequest
 		claimsGranted oauthelia2.Arguments
 		requested     time.Time
-		authTime      time.Time
 		userinfo      bool
 	)
 
 	switch session := requester.GetSession().(type) {
 	case *oidc.Session:
 		original = session.IDTokenClaims().ToMap()
-		authTime = session.IDTokenClaims().GetAuthTimeSafe()
 		requests = session.ClaimRequests.GetUserInfoRequests()
 		requested = session.GetRequestedAt()
 		userinfo = !session.ClientCredentials
@@ -153,7 +151,7 @@ func OpenIDConnectUserinfo(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter,
 		var revoked bool
 
 		// A token from a login before the user was logged out of the client gets no claims.
-		if revoked, err = middlewares.IsUserRevoked(ctx, ctx.Providers.StorageProvider, detailer.GetUsername(), client.GetID(), authTime); err == nil && revoked {
+		if revoked, err = middlewares.IsUserRevoked(ctx, ctx.Providers.StorageProvider, detailer.GetUsername(), client.GetID(), requested); err == nil && revoked {
 			ctx.GetLogger().Infof("User Info Request with id '%s' on client with id '%s' was refused as the token was revoked since the user logged in", requestID, client.GetID())
 
 			errorsx.WriteRFC6750Error(rw, oauthelia2.ErrRequestUnauthorized.WithHint("The Access Token was revoked since the user logged in."), nil)
