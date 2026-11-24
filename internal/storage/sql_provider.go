@@ -1034,7 +1034,7 @@ func (p *SQLProvider) DeleteWebAuthnCredential(ctx context.Context, kid string) 
 		return fmt.Errorf("error deleting WebAuthn credential with kid '%s': %w", kid, err)
 	}
 
-	return nil
+	return p.deleteWebAuthnCredentialImportedOrphans(ctx)
 }
 
 // DeleteWebAuthnCredentialByUsername deletes registered WebAuthn credential from the storage provider by username or
@@ -1054,7 +1054,7 @@ func (p *SQLProvider) DeleteWebAuthnCredentialByUsername(ctx context.Context, us
 		}
 	}
 
-	return nil
+	return p.deleteWebAuthnCredentialImportedOrphans(ctx)
 }
 
 // LoadWebAuthnCredentials loads WebAuthn credential registrations from the storage provider.

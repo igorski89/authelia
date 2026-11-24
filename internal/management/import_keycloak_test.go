@@ -88,6 +88,20 @@ func TestImportKeycloak(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, imported)
 
+	// The mark goes with the credential.
+	alice, err := store.LoadWebAuthnCredentialsByUsername(ctx, "localhost", "alice-test")
+	require.NoError(t, err)
+	require.Len(t, alice, 1)
+	require.NoError(t, store.DeleteWebAuthnCredential(ctx, alice[0].KID.String()))
+
+	imported, err = store.IsWebAuthnCredentialImported(ctx, alice[0].KID.String())
+	require.NoError(t, err)
+	assert.False(t, imported, "the mark of a deleted credential is removed")
+
+	imported, err = store.IsWebAuthnCredentialImported(ctx, credentials[0].KID.String())
+	require.NoError(t, err)
+	assert.True(t, imported, "other marks stay")
+
 	audit, err := service.ListAudit(ctx, "alice-test", 100, 0)
 	require.NoError(t, err)
 

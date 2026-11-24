@@ -27,6 +27,10 @@ const (
 	queryFmtDeleteWebAuthnCredentialImported = `
 		DELETE FROM %s
 		WHERE kid = ?;`
+
+	queryFmtDeleteWebAuthnCredentialImportedOrphans = `
+		DELETE FROM %s
+		WHERE kid NOT IN (SELECT kid FROM %s);`
 )
 
 // SaveWebAuthnCredentialImported marks a WebAuthn credential, by its credential ID, as imported from another system
@@ -58,6 +62,16 @@ func (p *SQLProvider) IsWebAuthnCredentialImported(ctx context.Context, kid stri
 func (p *SQLProvider) DeleteWebAuthnCredentialImported(ctx context.Context, kid string) (err error) {
 	if _, err = p.conn(ctx).ExecContext(ctx, p.db.Rebind(fmt.Sprintf(queryFmtDeleteWebAuthnCredentialImported, tableWebAuthnCredentialsImported)), kid); err != nil {
 		return fmt.Errorf("error deleting the import mark of WebAuthn credential '%s': %w", kid, err)
+	}
+
+	return nil
+}
+
+// deleteWebAuthnCredentialImportedOrphans removes the import marks of credentials which were deleted, so a mark never
+// outlives its credential.
+func (p *SQLProvider) deleteWebAuthnCredentialImportedOrphans(ctx context.Context) (err error) {
+	if _, err = p.conn(ctx).ExecContext(ctx, fmt.Sprintf(queryFmtDeleteWebAuthnCredentialImportedOrphans, tableWebAuthnCredentialsImported, tableWebAuthnCredentials)); err != nil {
+		return fmt.Errorf("error deleting the import marks of deleted WebAuthn credentials: %w", err)
 	}
 
 	return nil
