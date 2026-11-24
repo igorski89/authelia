@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -369,4 +370,50 @@ func TestSQLProviderAuthenticationGroupsSortedByteWise(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, groups, 3)
 	assert.Equal(t, "Users", groups[0].Name)
+}
+
+// TestSQLProviderAuthenticationUserRestoredAfterDelete re-inserts a deleted user's whole signed row, as someone with
+// write access to the database and an old copy of it could: its signature is still valid, so only the tombstone of the
+// username keeps it from being a user again.
+func TestSQLProviderAuthenticationUserRestoredAfterDelete(t *testing.T) {
+	provider := newTestSQLiteProvider(t)
+	require.NoError(t, provider.StartupCheck())
+
+	ctx := context.Background()
+
+	require.NoError(t, provider.CreateAuthenticationUser(ctx, newTestAuthenticationUser("restored", "restored@example.com")))
+
+	var row struct {
+		ID          int            `db:"id"`
+		CreatedAt   time.Time      `db:"created_at"`
+		UpdatedAt   time.Time      `db:"updated_at"`
+		Username    string         `db:"username"`
+		Email       string         `db:"email"`
+		DisplayName string         `db:"display_name"`
+		GivenName   string         `db:"given_name"`
+		FamilyName  string         `db:"family_name"`
+		Password    sql.NullString `db:"password"`
+		Disabled    bool           `db:"disabled"`
+		Signature   string         `db:"signature"`
+	}
+
+	require.NoError(t, provider.db.GetContext(ctx, &row, "SELECT * FROM authentication_users WHERE username = 'restored'"))
+	require.NoError(t, provider.DeleteAuthenticationUser(ctx, "restored"))
+
+	_, err := provider.db.ExecContext(ctx, `INSERT INTO authentication_users (id, created_at, updated_at, username, email, display_name, given_name, family_name, password, disabled, signature) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		row.ID, row.CreatedAt, row.UpdatedAt, row.Username, row.Email, row.DisplayName, row.GivenName, row.FamilyName, row.Password, row.Disabled, row.Signature)
+	require.NoError(t, err)
+
+	_, err = provider.LoadAuthenticationUser(ctx, "restored")
+	assert.ErrorIs(t, err, ErrNoAuthenticationUser)
+
+	_, err = provider.LoadAuthenticationUserByEmail(ctx, "restored@example.com")
+	assert.ErrorIs(t, err, ErrNoAuthenticationUser)
+
+	users, err := provider.LoadAuthenticationUsers(ctx, 100, 0)
+	require.NoError(t, err)
+
+	for _, user := range users {
+		assert.NotEqual(t, "restored", user.Username)
+	}
 }

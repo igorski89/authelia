@@ -111,6 +111,12 @@ func (p *SQLProvider) LoadAuthenticationUsers(ctx context.Context, limit, page i
 			continue
 		}
 
+		if err = p.checkAuthenticationUserNotRestored(ctx, &rows[i]); errors.Is(err, ErrNoAuthenticationUser) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+
 		if rows[i].Groups, err = p.loadAuthenticationUserGroupNames(ctx, &rows[i]); err != nil {
 			return nil, err
 		}
@@ -361,6 +367,10 @@ func (p *SQLProvider) loadAuthenticationUser(ctx context.Context, query, value s
 		return nil, fmt.Errorf("error loading authentication user '%s': %w", user.Username, ErrAuthenticationUserSignatureInvalid)
 	}
 
+	if err = p.checkAuthenticationUserNotRestored(ctx, user); err != nil {
+		return nil, err
+	}
+
 	if user.Groups, err = p.loadAuthenticationUserGroupNames(ctx, user); err != nil {
 		return nil, err
 	}
@@ -485,6 +495,21 @@ func (p *SQLProvider) checkAuthenticationUserUnused(ctx context.Context, query, 
 		return nil
 	default:
 		return err
+	}
+}
+
+// checkAuthenticationUserNotRestored treats a user whose username was deleted as not found: its row can only exist
+// again if it was put back by hand, for example from an old copy of the database, and a signed row stays valid.
+func (p *SQLProvider) checkAuthenticationUserNotRestored(ctx context.Context, user *model.AuthenticationUser) (err error) {
+	switch err = p.checkAuthenticationUsernameNotDeleted(ctx, user.Username); {
+	case errors.Is(err, ErrAuthenticationUsernameDeleted):
+		p.log.WithField("username", user.Username).Error("Authentication user has a username which was deleted; its row was put back by hand and is treated as if it does not exist")
+
+		return fmt.Errorf("error loading authentication user '%s': %w", user.Username, ErrNoAuthenticationUser)
+	case err != nil:
+		return err
+	default:
+		return nil
 	}
 }
 
