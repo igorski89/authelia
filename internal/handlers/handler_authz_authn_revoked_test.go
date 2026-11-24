@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"authelia.com/provider/oauth2/handler/openid"
-	"authelia.com/provider/oauth2/token/jwt"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
+
+	"authelia.com/provider/oauth2/handler/openid"
+	"authelia.com/provider/oauth2/token/jwt"
 
 	"github.com/authelia/authelia/v4/internal/mocks"
 	"github.com/authelia/authelia/v4/internal/model"
