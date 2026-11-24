@@ -249,6 +249,32 @@ Not covered yet:
 - **JWT access tokens** that an app validates itself stay valid after a disable until they expire. Keep their
   lifespans short (SGNL uses 5 minutes).
 
+### M4 security review (2026-11-24, of `v4.40.0-sgnl.8`, three independent reviewers set up by sgnl-01)
+
+No critical or high findings. Fixed in `sgnl.9`, each with a regression test which failed before the fix:
+
+1. A `{CRYPT}`-prefixed plaintext digest stored the password: digests are refused by their decoded type.
+2. Password reset links survived a logout (stored as typed) and an opened reset wasn't checked again: the canonical
+   username is stored, and the link is checked again when the password is set.
+3. Revocation races: revocation marks (V0039), see the C5 row; disable and delete revoke in their own transaction.
+4. SAML: requested authentication contexts are only refused for a weaker session; `ForceAuthn` asks for a new login.
+5. and 6. SAML pending requests and replay keys are bounded (size limits, rate limit, larger shared replay store).
+7. A deleted user's row put back by hand isn't a user; what the signatures don't cover is documented.
+8. An opened invite link which expired can't finish the setup.
+- Low: exact admin audience; no reads by write-only tokens (empty `PATCH` refused, `204` without the read scope);
+  generic 404/409 bodies; optimistic locking of user updates; import marks removed with their credential; no client IP
+  in SAML assertions; ASCII-only server path segments.
+
+Accepted, with the reviewers' agreement:
+
+- A SAML flow ID isn't bound to the browser which started it, as with OpenID Connect 1.0 flows (not exploitable).
+- The library's NameID policy check is off as a whole, for Stripe's forced emailAddress format.
+- The SAML replay store is per process; a database store can follow after M5 if Authelia runs as several instances.
+- The first verified assertion of an imported passkey sets its backup flags (signed, and limited to marked credentials).
+- JWT access tokens which apps verify themselves stay valid until they expire (5 minutes).
+- The SAML idle session timeout is the portal's, as for OpenID Connect 1.0.
+- In-progress consent sessions aren't revoked: they need a portal session, which the revocation mark refuses.
+
 ### Consent tests (2026-11-24, `sgnl/e2e/m4_consent_test.py` in CI, 7 checks)
 
 - implicit consent without offline_access: a code at once; with offline_access and without the option: the consent
@@ -343,6 +369,4 @@ Not covered yet:
 
 Not covered yet:
 
-- **For the M4 review:** anonymous SAML requests write `saml_flows` rows (bounded by expiry cleanup only), RelayState length
-  is unchecked.
 - **The suspend test** against SGNL's real apps is SGNL-side work.
