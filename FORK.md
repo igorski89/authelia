@@ -290,13 +290,14 @@ Not covered yet:
 
 ### M3 SAML tests (2026-11-23, `sgnl/e2e/m3_saml_test.py` in CI with the local SP `sgnl/e2e/samlsp/`; `sgnl/e2e/browser/saml_passkey.mjs` by hand)
 
-- **API (33 checks):**
+- **API (36 checks):**
   - metadata at both paths, entity ID = issuer, SSO URL = Keycloak's path;
   - an issuer which isn't a configured `authelia_url` gets 404;
   - an anonymous user is sent to the portal and resumed after login;
   - the response page is HTML with a hash-only CSP; NameID = email (emailAddress format); RelayState comes back;
   - only the configured attributes are released;
   - a resumed or unknown flow is refused; resuming with an insufficient session gets 403 (no loop);
+  - an expired flow (aged in the database) is neither resumed after login nor at the resume endpoint;
   - `sign: both` signs the response and the assertion; metadata is XML;
   - HTTP-POST binding with a session answers at once;
   - step-up: a one-factor session is asked for the second factor at a `two_factor` SP;
@@ -313,6 +314,12 @@ Not covered yet:
   - an already logged in user whose request arrives as a cross-site HTTP-POST gets the response without logging in
     again (found by this test: the portal stalled, and resumed twice; fixed).
 - The real Stripe test is at the dress rehearsal (SGNL side).
+- **Storage queries on PostgreSQL and MySQL** (`TestEngines` in `internal/storage/sql_provider_engines_test.go`, run by
+  the CI job 'Migrations on PostgreSQL and MySQL', skipped elsewhere): SAML flows (save, expiry cleanup, use once),
+  the events query (newest first, paging), and the WebAuthn import marks.
+- **Unit:** the portal resumes a SAML flow once, only for a complete authentication (`LoginPortal.test.tsx`, checked to
+  fail without the guard); the endpoints and routes with and without `enable_keycloak_endpoints`
+  (`internal/samlidp/provider_test.go`, `internal/server/handlers_saml_test.go`).
 
 ### M2 tests (2026-11-23, `sgnl/e2e/run.sh` in CI, `sgnl/e2e/browser/run.sh` by hand)
 
@@ -338,10 +345,6 @@ Not covered yet:
 
 Not covered yet:
 
-- **Expired SAML flows** (15 minutes) and `enable_keycloak_endpoints: false` are not tested.
-- **The SAML flow storage** (`saml_flows`) has only run on SQLite.
-- **The portal's SAML resume** has no vitest case yet (only the hand-run browser test); `LoginPortal.tsx` is a merge risk.
 - **For the M4 review:** anonymous SAML requests write `saml_flows` rows (bounded by expiry cleanup only), RelayState length
   is unchecked.
 - **The suspend test** against SGNL's real apps is SGNL-side work.
-- **The events query** (`/api/admin/events`) has only run on SQLite.

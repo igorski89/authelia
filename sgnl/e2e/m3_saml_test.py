@@ -10,6 +10,7 @@ import html
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 import time
@@ -143,6 +144,20 @@ check('a resumed flow can not be used again', st == 400)
 
 st, _, _ = user.req('GET', '/api/saml/sso/resume?flow_id=00000000-0000-0000-0000-000000000000')
 check('an unknown flow is refused', st == 400)
+
+# An expired flow: a pending request is kept for 15 minutes; this one is aged in the database.
+expiring = Client()
+st, h, _ = send_request(expiring, 'sp1')
+fid_expired = flow_id(h.get('Location', ''))
+db = sqlite3.connect(os.path.join(DIR, 'db.sqlite3'))
+aged = db.execute("UPDATE saml_flows SET expires_at = datetime('now', '-1 minute') WHERE flow_id = ?", (fid_expired,)).rowcount
+db.commit()
+check('the pending request was aged in the database', aged == 1, aged)
+db.close()
+st, _, b = expiring.req('POST', '/api/firstfactor', {'username': 'sam', 'password': 'a-long-password-5', 'flow': 'saml', 'flowID': fid_expired})
+check('after login, an expired flow is not resumed', st != 200 or '/api/saml/sso/resume' not in b, b[:160])
+st, _, _ = expiring.req('GET', f'/api/saml/sso/resume?flow_id={fid_expired}')
+check('an expired flow is refused at the resume endpoint', st == 400)
 
 # A logged in user gets the response at once, with the HTTP-POST binding and at Keycloak's path.
 st, _, page = send_request(user, 'sp1', binding='post')

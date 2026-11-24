@@ -95,6 +95,12 @@ jobs:
         env:
           AUTHELIA_STORAGE_ENCRYPTION_KEY: 'a-throwaway-storage-encryption-key-for-ci-only-0123456789'
         run: 'sgnl/ci-storage-engines.sh'
+      - name: 'Storage queries on PostgreSQL and MySQL (SAML flows, events, import marks)'
+        env:
+          AUTHELIA_STORAGE_ENCRYPTION_KEY: 'a-throwaway-storage-encryption-key-for-ci-only-0123456789'
+          AUTHELIA_TEST_POSTGRES_ADDRESS: 'tcp://127.0.0.1:5432'
+          AUTHELIA_TEST_MYSQL_ADDRESS: 'tcp://127.0.0.1:3306'
+        run: 'go test ./internal/storage/ -run TestEngines -v'
 
   e2e:
     name: 'End-to-end tests (admin API, login, revoke)'

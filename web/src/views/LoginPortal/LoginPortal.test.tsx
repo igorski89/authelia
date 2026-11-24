@@ -1213,3 +1213,85 @@ describe("external identity notifications and link page", () => {
         expect(mocks.redirector).not.toHaveBeenCalled();
     });
 });
+
+describe("SAML flow", () => {
+    const configuration = {
+        available_methods: new Set([2]),
+        password_change_disabled: false,
+        password_reset_disabled: false,
+        recovery_codes_disabled: false,
+    };
+    const userInfo = {
+        display_name: "test",
+        emails: [],
+        has_duo: false,
+        has_totp: true,
+        has_webauthn: false,
+        method: 1,
+    };
+
+    const withState = (level: number) => {
+        vi.mocked(useAutheliaState).mockReturnValue([
+            { authentication_level: level, factor_knowledge: true, username: "test" },
+            vi.fn(),
+            false,
+            undefined,
+        ]);
+        vi.mocked(useConfiguration).mockReturnValue([configuration, vi.fn(), false, undefined] as any);
+        vi.mocked(useUserInfoPOST).mockReturnValue([userInfo, vi.fn(), false, undefined] as any);
+    };
+
+    const renderAt = (url: string) =>
+        render(
+            <MemoryRouter initialEntries={[url]}>
+                <LoginPortal {...defaultProps} />
+            </MemoryRouter>,
+        );
+
+    it("resumes the request of a fully authenticated user at once, and only once", async () => {
+        withState(2);
+
+        const { rerender } = renderAt("/?flow=saml&flow_id=abc-123");
+
+        await waitFor(() => {
+            expect(mocks.redirector).toHaveBeenCalledTimes(1);
+        });
+        expect(mocks.redirector).toHaveBeenCalledWith(
+            expect.stringMatching(/\/api\/saml\/sso\/resume\?flow_id=abc-123$/),
+        );
+
+        // The state reloads, which runs the portal's effect again: the flow is used once, so it isn't resumed again.
+        withState(2);
+        rerender(
+            <MemoryRouter initialEntries={["/?flow=saml&flow_id=abc-123"]}>
+                <LoginPortal {...defaultProps} />
+            </MemoryRouter>,
+        );
+
+        await act(async () => {});
+        expect(mocks.redirector).toHaveBeenCalledTimes(1);
+        expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it("asks a one factor user for the second factor instead of resuming", async () => {
+        withState(1);
+
+        renderAt("/?flow=saml&flow_id=abc-123");
+
+        await waitFor(() => {
+            expect(mockNavigate).toHaveBeenCalled();
+        });
+        expect(mocks.redirector).not.toHaveBeenCalled();
+    });
+
+    it("leaves other flows alone", async () => {
+        withState(2);
+
+        renderAt("/?flow=openid_connect&flow_id=abc-123");
+
+        await waitFor(() => {
+            expect(mockNavigate).toHaveBeenCalled();
+        });
+        expect(mocks.redirector).not.toHaveBeenCalled();
+    });
+});
