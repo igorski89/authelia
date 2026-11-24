@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +42,9 @@ type ClientIDMetadataDocuments struct {
 	rules    []schema.IdentityProvidersOpenIDConnectClientIDMetadataDocumentRule
 	oidc     *schema.IdentityProvidersOpenIDConnect
 	policies map[string]ClientAuthorizationPolicy
+
+	cache      *clientIDMetadataDocumentCache
+	maxPerHost int
 }
 
 // MetadataDocumentClient is a client resolved from a Client ID Metadata Document: a client built from the rule of its
@@ -89,12 +93,14 @@ func NewClientIDMetadataDocuments(config *schema.IdentityProvidersOpenIDConnect,
 	settings := config.ClientIDMetadataDocuments
 
 	documents = &ClientIDMetadataDocuments{
-		rules:    settings.Rules,
-		oidc:     config,
-		policies: policies,
+		rules:      settings.Rules,
+		oidc:       config,
+		policies:   policies,
+		cache:      newClientIDMetadataDocumentCache(store),
+		maxPerHost: settings.MaxDocumentsPerHost,
 	}
 
-	if documents.HTTPClient, err = newClientIDMetadataDocumentHTTPClient(config, trusted, settings.FetchTimeout); err != nil {
+	if documents.HTTPClient, err = newClientIDMetadataDocumentHTTPClient(settings, trusted); err != nil {
 		return nil, err
 	}
 
@@ -109,7 +115,7 @@ func NewClientIDMetadataDocuments(config *schema.IdentityProvidersOpenIDConnect,
 	}
 
 	if documents.Resolver, err = cimd.NewResolver(cimd.Config{
-		Storage:                  newClientIDMetadataDocumentCache(store),
+		Storage:                  documents.cache,
 		HTTPClient:               documents.HTTPClient,
 		Policy:                   documents.policy,
 		Validators:               []oauthelia2.ClientRegistrationValidator{rfc7591.NewLocalMetadataDocumentValidator(oidc), cimd.RedirectURISameOriginValidator{}},
@@ -123,7 +129,7 @@ func NewClientIDMetadataDocuments(config *schema.IdentityProvidersOpenIDConnect,
 		MaxBodyBytes:             int64(settings.MaxDocumentBytes),
 		DefaultLifespan:          settings.CacheLifespan,
 		MaxLifespan:              settings.MaxCacheLifespan,
-		MaxDocumentsPerDomain:    settings.MaxDocumentsPerHost,
+		MaxDocumentsPerDomain:    settings.MaxDocumentsPerDomain,
 	}); err != nil {
 		return nil, fmt.Errorf("error configuring client id metadata documents: %w", err)
 	}
@@ -160,16 +166,41 @@ func (d *ClientIDMetadataDocuments) Rule(host string) (rule *schema.IdentityProv
 	return nil
 }
 
-// policy refuses a client identifier whose host has no rule, before the cache is read or the document fetched.
+// policy refuses a client identifier before the cache is read or the document fetched: one whose host has no rule, one
+// spelled other than in lower case without a trailing dot (which would be another client of the same host), one with a
+// port the rule doesn't list, and a new one of a host which has as many documents cached as it may.
 func (d *ClientIDMetadataDocuments) policy(_ context.Context, id *url.URL) (err error) {
+	log := logging.Logger().WithField("client_id", id.String())
+
 	if len(id.String()) > 255 {
+		log.Warn("Client ID Metadata Document refused: the client identifier is too long")
+
 		return oauthelia2.ErrInvalidClient.WithHint("The client identifier is too long.")
 	}
 
-	if d.Rule(id.Hostname()) == nil {
-		logging.Logger().WithField("host", id.Hostname()).Warn("Client ID Metadata Document refused: no rule permits the host")
+	if id.Host != strings.ToLower(id.Host) || strings.HasSuffix(id.Hostname(), ".") {
+		log.Warn("Client ID Metadata Document refused: the host isn't spelled in lower case without a trailing dot")
+
+		return oauthelia2.ErrInvalidClient.WithHint("The host of the client identifier must be in lower case without a trailing dot.")
+	}
+
+	rule := d.Rule(id.Hostname())
+	if rule == nil {
+		log.WithField("host", id.Hostname()).Warn("Client ID Metadata Document refused: no rule permits the host")
 
 		return oauthelia2.ErrInvalidClient.WithHintf("The host '%s' is not permitted to identify clients.", id.Hostname())
+	}
+
+	if port := id.Port(); port != "" && !slices.ContainsFunc(rule.Ports, func(p int) bool { return strconv.Itoa(p) == port }) {
+		log.Warn("Client ID Metadata Document refused: the rule of the host doesn't permit its port")
+
+		return oauthelia2.ErrInvalidClient.WithHintf("The port '%s' is not permitted to identify clients.", port)
+	}
+
+	if d.cache != nil && d.maxPerHost > 0 && !d.cache.Has(id.String()) && d.cache.CountHost(id.Host) >= d.maxPerHost {
+		log.Warn("Client ID Metadata Document refused: its host has as many documents cached as it may")
+
+		return oauthelia2.ErrInvalidClient.WithHint("The host has too many clients.")
 	}
 
 	return nil
@@ -196,7 +227,7 @@ func (d *ClientIDMetadataDocuments) NewClient(_ context.Context, record *oauthel
 	config := copyClientIDMetadataDocumentRuleClient(rule.Client)
 
 	config.ID = record.ID
-	config.Name = parsed.Hostname()
+	config.Name = parsed.Host
 	config.RedirectURIs = slices.Clone(metadata.RedirectURIs)
 
 	loopback := false
@@ -235,7 +266,7 @@ func (d *ClientIDMetadataDocuments) NewClient(_ context.Context, record *oauthel
 		return nil, oauthelia2.ErrServerError.WithDebug("The client of a Client ID Metadata Document isn't a registered client.")
 	}
 
-	return &MetadataDocumentClient{RegisteredClient: registered, Host: parsed.Hostname(), Loopback: loopback, permitted: slices.Clone(rule.SubjectTokenClientsSupported)}, nil
+	return &MetadataDocumentClient{RegisteredClient: registered, Host: parsed.Host, Loopback: loopback, permitted: slices.Clone(rule.SubjectTokenClientsSupported)}, nil
 }
 
 func copyClientIDMetadataDocumentRuleClient(client schema.IdentityProvidersOpenIDConnectClient) schema.IdentityProvidersOpenIDConnectClient {
@@ -253,7 +284,9 @@ func copyClientIDMetadataDocumentRuleClient(client schema.IdentityProvidersOpenI
 // newClientIDMetadataDocumentHTTPClient returns the client which fetches documents: it trusts the certificates
 // Authelia trusts, refuses special-use addresses other than the allowed networks of the guard, doesn't follow
 // redirects or retry, and logs each fetch without its body.
-func newClientIDMetadataDocumentHTTPClient(config *schema.IdentityProvidersOpenIDConnect, trusted *x509.CertPool, timeout time.Duration) (client *retryablehttp.Client, err error) {
+func newClientIDMetadataDocumentHTTPClient(settings schema.IdentityProvidersOpenIDConnectClientIDMetadataDocuments, trusted *x509.CertPool) (client *retryablehttp.Client, err error) {
+	timeout := settings.FetchTimeout
+
 	base := &retryablehttp.Client{
 		HTTPClient: &http.Client{
 			Transport: &http.Transport{
@@ -276,7 +309,7 @@ func newClientIDMetadataDocumentHTTPClient(config *schema.IdentityProvidersOpenI
 		ErrorHandler: retryablehttp.PassthroughErrorHandler,
 	}
 
-	if client, err = oauthelia2.GuardHTTPClient(base, oauthelia2.WithSpecialUseAddressGuardAllowedNetworks(config.SpecialUseAddressGuard.AllowedNetworks...)); err != nil {
+	if client, err = oauthelia2.GuardHTTPClient(base, oauthelia2.WithSpecialUseAddressGuardAllowedNetworks(settings.AllowedNetworks...)); err != nil {
 		return nil, fmt.Errorf("error configuring the client id metadata document http client: %w", err)
 	}
 
@@ -322,6 +355,31 @@ type clientIDMetadataDocumentCache struct {
 
 func newClientIDMetadataDocumentCache(store storage.Provider) *clientIDMetadataDocumentCache {
 	return &clientIDMetadataDocumentCache{records: map[string][]byte{}, domains: map[string]string{}, expires: map[string]time.Time{}, store: store}
+}
+
+// Has reports whether the cache has the record for id.
+func (c *clientIDMetadataDocumentCache) Has(id string) (has bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	_, has = c.records[id]
+
+	return has
+}
+
+// CountHost returns the number of records whose client identifier has the host (with its port), unlike the library's
+// count, which is of a registrable domain.
+func (c *clientIDMetadataDocumentCache) CountHost(host string) (count int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for id := range c.records {
+		if u, err := url.Parse(id); err == nil && u.Host == host {
+			count++
+		}
+	}
+
+	return count
 }
 
 // GetClientIDMetadataDocument returns a copy of the record for id.

@@ -6,6 +6,7 @@ package oidc
 
 import (
 	"context"
+	"net/url"
 	"testing"
 	"time"
 
@@ -183,4 +184,58 @@ func TestClientIDMetadataDocumentCache(t *testing.T) {
 
 	count, _ = cache.CountClientIDMetadataDocuments(ctx, "claude.ai")
 	assert.Equal(t, 0, count)
+}
+
+func TestClientIDMetadataDocumentsPolicy(t *testing.T) {
+	documents := newTestClientIDMetadataDocuments(
+		schema.IdentityProvidersOpenIDConnectClientIDMetadataDocumentRule{Domain: "claude.ai"},
+		schema.IdentityProvidersOpenIDConnectClientIDMetadataDocumentRule{Domain: "ports.example", Ports: []int{8443}},
+	)
+	documents.cache = newClientIDMetadataDocumentCache(nil)
+	documents.maxPerHost = 2
+
+	testCases := []struct {
+		id       string
+		expected bool
+	}{
+		{"https://claude.ai/client.json", true},
+		{"https://claude.ai:443/client.json", false},
+		{"https://claude.ai:8443/client.json", false},
+		{"https://CLAUDE.AI/client.json", false},
+		{"https://Claude.ai/client.json", false},
+		{"https://claude.ai./client.json", false},
+		{"https://evil.claude.ai/client.json", false},
+		{"https://ports.example:8443/client.json", true},
+		{"https://ports.example/client.json", true},
+		{"https://ports.example:9443/client.json", false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.id, func(t *testing.T) {
+			u, err := url.Parse(tc.id)
+			require.NoError(t, err)
+
+			err = documents.policy(context.Background(), u)
+
+			if tc.expected {
+				assert.NoError(t, err)
+			} else {
+				assert.ErrorIs(t, err, oauthelia2.ErrInvalidClient)
+			}
+		})
+	}
+
+	t.Run("ShouldCapNewDocumentsPerExactHost", func(t *testing.T) {
+		ctx := context.Background()
+
+		for _, id := range []string{"https://claude.ai/a.json", "https://claude.ai/b.json"} {
+			require.NoError(t, documents.cache.SetClientIDMetadataDocument(ctx, &oauthelia2.ClientIDMetadataDocumentRecord{ID: id, Domain: "claude.ai", Metadata: &oauthelia2.ClientRegistrationMetadata{}}))
+		}
+
+		parse := func(raw string) *url.URL { u, _ := url.Parse(raw); return u }
+
+		assert.ErrorIs(t, documents.policy(ctx, parse("https://claude.ai/c.json")), oauthelia2.ErrInvalidClient, "a new document over the cap of its host")
+		assert.NoError(t, documents.policy(ctx, parse("https://claude.ai/a.json")), "a cached document is still served")
+		assert.NoError(t, documents.policy(ctx, parse("https://ports.example/a.json")), "another host has its own cap")
+	})
 }

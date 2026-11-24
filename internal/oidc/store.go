@@ -564,7 +564,7 @@ func (s *Store) GetPARSession(ctx context.Context, requestURI string) (request o
 		return nil, oauthelia2.ErrNotFound.WithHint("The requested PAR session was not found, was expired, or was otherwise invalid.")
 	}
 
-	return par.ToAuthorizeRequest(ctx, NewSession(), s)
+	return par.ToAuthorizeRequest(ctx, NewSession(), resolvingStore{s})
 }
 
 // DeletePARSession deletes the context.

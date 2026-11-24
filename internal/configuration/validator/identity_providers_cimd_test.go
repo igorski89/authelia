@@ -49,6 +49,8 @@ func TestValidateOIDCClientIDMetadataDocumentsDefaults(t *testing.T) {
 	assert.Equal(t, time.Hour, cimd.CacheLifespan)
 	assert.Equal(t, 24*time.Hour, cimd.MaxCacheLifespan)
 	assert.Equal(t, 20, cimd.MaxDocumentsPerHost)
+	assert.Equal(t, 100, cimd.MaxDocumentsPerDomain)
+	assert.Empty(t, validator.Warnings())
 
 	rule := cimd.Rules[0]
 	assert.Equal(t, oidc.ClientConsentModeExplicit.String(), rule.ConsentMode)
@@ -103,6 +105,15 @@ func TestValidateOIDCClientIDMetadataDocumentsRefusals(t *testing.T) {
 			c.ClientIDMetadataDocuments.FetchTimeout = -time.Second
 		}, "option 'fetch_timeout' must be more than 0"},
 		{"ShouldRefuseLargeDocuments", func(c *schema.IdentityProvidersOpenIDConnect) { c.ClientIDMetadataDocuments.MaxDocumentBytes = 1 << 20 }, "option 'max_document_bytes' must be at most"},
+		{"ShouldRefusePublicSuffix", func(c *schema.IdentityProvidersOpenIDConnect) {
+			c.ClientIDMetadataDocuments.Rules[0].Domain = ".github.io"
+		}, "must not be a public suffix"},
+		{"ShouldRefuseTopLevelDomain", func(c *schema.IdentityProvidersOpenIDConnect) { c.ClientIDMetadataDocuments.Rules[0].Domain = "ai" }, "must not be a public suffix"},
+		{"ShouldRefuseICANNSuffix", func(c *schema.IdentityProvidersOpenIDConnect) { c.ClientIDMetadataDocuments.Rules[0].Domain = ".co.uk" }, "must not be a public suffix"},
+		{"ShouldRefuseInvalidPort", func(c *schema.IdentityProvidersOpenIDConnect) {
+			c.ClientIDMetadataDocuments.Rules[0].Ports = []int{70000}
+		}, "option 'ports' must only contain ports"},
+		{"ShouldRefuseNegativeDocumentsPerDomain", func(c *schema.IdentityProvidersOpenIDConnect) { c.ClientIDMetadataDocuments.MaxDocumentsPerDomain = -1 }, "option 'max_documents_per_domain' must be more than 0"},
 		{"ShouldRefuseNegativeDocumentsPerHost", func(c *schema.IdentityProvidersOpenIDConnect) { c.ClientIDMetadataDocuments.MaxDocumentsPerHost = -1 }, "option 'max_documents_per_host' must be more than 0"},
 	}
 
@@ -137,6 +148,18 @@ func TestValidateOIDCClientIDMetadataDocumentsDisabled(t *testing.T) {
 	config := newTestCIMDConfig()
 	config.ClientIDMetadataDocuments.Enabled = false
 
+	validator := schema.NewStructValidator()
+
+	validateOIDCClientIDMetadataDocuments(NewValidateCtx(), config, validator)
+
+	assert.Empty(t, cimdErrors(validator))
+}
+
+func TestValidateOIDCClientIDMetadataDocumentsLocalhostAndSubdomainRule(t *testing.T) {
+	config := newTestCIMDConfig(
+		schema.IdentityProvidersOpenIDConnectClientIDMetadataDocumentRule{Domain: "localhost"},
+		schema.IdentityProvidersOpenIDConnectClientIDMetadataDocumentRule{Domain: ".claude.ai", Ports: []int{8443}},
+	)
 	validator := schema.NewStructValidator()
 
 	validateOIDCClientIDMetadataDocuments(NewValidateCtx(), config, validator)

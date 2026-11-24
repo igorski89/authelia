@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/net/publicsuffix"
+
 	"github.com/authelia/authelia/v4/internal/configuration/schema"
 	"github.com/authelia/authelia/v4/internal/oidc"
 	"github.com/authelia/authelia/v4/internal/utils"
@@ -25,6 +27,9 @@ const (
 	errFmtOIDCCIMDMaxDocumentBytes  = errFmtOIDCCIMD + "option 'max_document_bytes' must be at most %d but it's configured as '%d'"
 	errFmtOIDCCIMDMaxCacheLifespan  = errFmtOIDCCIMD + "option 'max_cache_lifespan' must not be less than option 'cache_lifespan'"
 	errFmtOIDCCIMDDomainInvalid     = "identity_providers: oidc: client_id_metadata_documents: rules: rule #%d: option 'domain' must be a host name, optionally with a leading dot for its subdomains only, but it's configured as '%s'"
+	errFmtOIDCCIMDDomainSuffix      = errFmtOIDCCIMDRule + "option 'domain' must not be a public suffix, whose subdomains belong to anyone"
+	errFmtOIDCCIMDPort              = errFmtOIDCCIMDRule + "option 'ports' must only contain ports from 1 to 65535 but it contains '%d'"
+	errFmtOIDCCIMDAllowedNetworks   = errFmtOIDCCIMD + "option 'allowed_networks' lets documents be fetched from special-use addresses, which is for tests only"
 	errFmtOIDCCIMDDomainOverlap     = errFmtOIDCCIMDRule + "option 'domain' overlaps the domain '%s' of another rule, so a host would match both"
 	errFmtOIDCCIMDImplicitConsent   = errFmtOIDCCIMDRule + "option 'consent_mode' must not be 'implicit', as the consent screen is where the user sees which host the client is from"
 	errFmtOIDCCIMDScopeExcluded     = errFmtOIDCCIMDRule + "option 'scopes' must not contain '%s'"
@@ -92,12 +97,26 @@ func validateOIDCClientIDMetadataDocumentsLimits(cimd *schema.IdentityProvidersO
 		validator.Push(fmt.Errorf(errFmtOIDCCIMDMaxDocumentBytes, cimdMaxDocumentBytesLimit, cimd.MaxDocumentBytes))
 	}
 
-	// The count of documents per host is never off: it bounds the memory one host can make the cache use.
-	switch {
-	case cimd.MaxDocumentsPerHost == 0:
-		cimd.MaxDocumentsPerHost = 20
-	case cimd.MaxDocumentsPerHost < 0:
-		validator.Push(fmt.Errorf(errFmtOIDCCIMDPositive, "max_documents_per_host", cimd.MaxDocumentsPerHost))
+	// The counts of documents are never off: they bound the memory one host, and the hosts of one registrable domain,
+	// can make the cache use.
+	for _, d := range []struct {
+		name     string
+		value    *int
+		fallback int
+	}{
+		{"max_documents_per_host", &cimd.MaxDocumentsPerHost, 20},
+		{"max_documents_per_domain", &cimd.MaxDocumentsPerDomain, 100},
+	} {
+		switch {
+		case *d.value == 0:
+			*d.value = d.fallback
+		case *d.value < 0:
+			validator.Push(fmt.Errorf(errFmtOIDCCIMDPositive, d.name, *d.value))
+		}
+	}
+
+	if len(cimd.AllowedNetworks) != 0 {
+		validator.PushWarning(errors.New(errFmtOIDCCIMDAllowedNetworks))
 	}
 }
 
@@ -129,6 +148,20 @@ func validateOIDCClientIDMetadataDocumentRule(ctx *ValidateCtx, i int, config *s
 		validator.Push(fmt.Errorf(errFmtOIDCCIMDDomainInvalid, i+1, rule.Domain))
 
 		return
+	}
+
+	// A public suffix such as 'github.io' has subdomains which belong to anyone. 'localhost' is permitted for tests, as
+	// its documents can only be fetched with 'allowed_networks'.
+	if host := strings.TrimPrefix(rule.Domain, "."); host != "localhost" {
+		if _, err := publicsuffix.EffectiveTLDPlusOne(host); err != nil {
+			validator.Push(fmt.Errorf(errFmtOIDCCIMDDomainSuffix, i+1, rule.Domain))
+		}
+	}
+
+	for _, port := range rule.Ports {
+		if port < 1 || port > 65535 {
+			validator.Push(fmt.Errorf(errFmtOIDCCIMDPort, i+1, rule.Domain, port))
+		}
 	}
 
 	if rule.ConsentMode == "" {

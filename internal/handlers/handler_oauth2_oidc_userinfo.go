@@ -95,15 +95,13 @@ func OpenIDConnectUserinfo(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter,
 	}
 
 	if client, err = ctx.Providers.OpenIDConnect.GetResolvedClient(ctx, requester.GetClient().GetID()); err != nil {
-		ctx.GetLogger().Errorf("User Info Request with id '%s' on client with id '%s' failed to retrieve client configuration with error: %s", requestID, client.GetID(), oauthelia2.ErrorToDebugRFC6749Error(err))
+		ctx.GetLogger().Errorf("User Info Request with id '%s' on client with id '%s' failed to retrieve client configuration with error: %s", requestID, requester.GetClient().GetID(), oauthelia2.ErrorToDebugRFC6749Error(err))
 
 		errorsx.WriteRFC6750Error(
 			rw,
 			oauthelia2.ErrInvalidRequest.WithHint("The client the access token was issued to is no longer registered with the authorization server."),
 			nil,
 		)
-
-		errorsx.WriteJSONError(rw, r, err)
 
 		return
 	}

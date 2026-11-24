@@ -81,11 +81,16 @@ class Documents(http.server.BaseHTTPRequestHandler):
         pass
 
 
-server = http.server.ThreadingHTTPServer(('127.0.0.1', PORT), Documents)
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 context.load_cert_chain(os.path.join(E2E, 'docs.crt'), os.path.join(E2E, 'docs.key'))
-server.socket = context.wrap_socket(server.socket, server_side=True)
-threading.Thread(target=server.serve_forever, daemon=True).start()
+servers = []
+
+# The documents are also served on a port the rule doesn't list, so a missing port check would show as a fetch.
+for port in (PORT, PORT + 1):
+    server = http.server.ThreadingHTTPServer(('127.0.0.1', port), Documents)
+    server.socket = context.wrap_socket(server.socket, server_side=True)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    servers.append(server)
 
 api, A = Client(), admin_headers()
 api.req('POST', '/api/admin/groups', {'name': 'sgnl_users'}, A)
@@ -159,8 +164,8 @@ check('discovery advertises the iss authorization response parameter', discovery
 
 # A login with the client of a document, as Claude Code names its resource.
 _, consent, _ = authorize(CLAUDE, consent=False, resource=MCP_RESOURCE)
-check('consent: shows the host of the document', consent.get('metadata_document_host') == 'localhost', consent)
-check('consent: the name is the host, never the document\'s client_name', consent.get('client_description') == 'localhost', consent.get('client_description'))
+check('consent: shows the host (with its port) of the document', consent.get('metadata_document_host') == f'localhost:{PORT}', consent)
+check('consent: the name is the host, never the document\'s client_name', consent.get('client_description') == f'localhost:{PORT}', consent.get('client_description'))
 check('consent: says the client returns to the user\'s computer', consent.get('loopback') is True, consent)
 
 fetched_before = fetches.count('/claude.json')
@@ -188,8 +193,16 @@ check('a host without a rule is refused, without a fetch', refused(location) and
 # The rule's domain is matched exactly: the library's own check lets a subdomain through, the rule refuses it.
 _, _, location = authorize(f'https://docs.localhost:{PORT}/claude.json')
 time.sleep(0.2)
-logged = 'no rule permits the host" host=docs.localhost' in open(os.path.join(E2E, 'authelia.log')).read()
+logged = any('no rule permits the host' in line and 'host=docs.localhost' in line for line in open(os.path.join(E2E, 'authelia.log')))
 check('a subdomain of an exact rule domain is refused by the rule, without a fetch', refused(location) and logged and len(fetches) == count, f'{logged} {fetches[count:]}')
+# Spellings of a client identifier which would be another client of the same host, and a port the rule doesn't list.
+for variant, name in ((f'https://LOCALHOST:{PORT}/claude.json', 'upper case'), (f'https://localhost.:{PORT}/claude.json', 'a trailing dot'),
+                      (f'https://localhost:{PORT + 1}/claude.json', 'a port the rule doesn\'t list (served there too)'), ('https://localhost/claude.json', 'the default port, not in the rule')):
+    count = len(fetches)
+    _, _, location = authorize(variant)
+    check(f'a client identifier with {name} is refused, without a fetch', refused(location) and len(fetches) == count, f'{location[:120]} {fetches[count:]}')
+
+count = len(fetches)
 _, _, location = authorize(ORIGIN + '/redirect.json')
 check('a document served with a redirect is refused (redirects aren\'t followed)', refused(location) and '/claude.json' not in fetches[count:], f'{location} {fetches[count:]}')
 _, _, location = authorize(ORIGIN + '/big.json')
@@ -207,6 +220,19 @@ check('a scope outside the rule is refused', refused(location), location)
 
 refused_many = [refused(authorize(f'{ORIGIN}/many{n}.json', consent=False)[2]) for n in range(8)]
 check('the documents of one host are capped (max_documents_per_host)', any(refused_many) and not all(refused_many), refused_many)
+
+# Pushed authorization requests: the stored request of a document client is loaded with its client again.
+verifier = secrets.token_urlsafe(48)
+challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
+st, _, body = Client().req('POST', '/api/oidc/pushed-authorization-request', {
+    'client_id': CLAUDE, 'response_type': 'code', 'redirect_uri': REDIRECT, 'scope': 'openid profile', 'state': secrets.token_hex(12),
+    'code_challenge': challenge, 'code_challenge_method': 'S256'}, form=True)
+request_uri = json.loads(body).get('request_uri', '') if st in (200, 201) else ''
+check('PAR: a document client pushes its authorization request', request_uri, f'{st} {body[:200]}')
+par_user = Client()
+par_user.req('POST', '/api/firstfactor', {'username': 'cimduser', 'password': 'a-long-password-x'})
+_, headers, _ = par_user.req('GET', '/api/oidc/authorization?' + urllib.parse.urlencode({'client_id': CLAUDE, 'request_uri': request_uri}))
+check('PAR: the pushed request of a document client is used at the authorization endpoint', 'flow_id=' in headers.get('Location', '') or 'code=' in headers.get('Location', ''), headers.get('Location', ''))
 
 # A logout ends the tokens of the document client, like those of a registered client.
 second, _, _ = authorize(CLAUDE, resource=MCP_RESOURCE)
@@ -249,7 +275,7 @@ def instance(name, port, change):
 
 
 # The guard without the test exception: the document is never fetched from localhost, and a refresh is refused cleanly.
-process = instance('guarded', 9096, lambda c: c.replace("allowed_networks: ['127.0.0.1/32', '::1/128']", 'allowed_networks: []'))
+process = instance('guarded', 9096, lambda c: c.replace("allowed_networks: ['127.0.0.1/32', '::1/128']", 'allowed_networks: []'))  # noqa: E501
 try:
     count = len(fetches)
     st, body = refresh(third['refresh_token'], port=9096)
@@ -273,6 +299,7 @@ finally:
     process.terminate()
     process.wait()
 
-server.shutdown()
+for server in servers:
+    server.shutdown()
 
 sys.exit(summary())

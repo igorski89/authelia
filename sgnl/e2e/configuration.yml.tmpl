@@ -92,12 +92,11 @@ identity_providers:
       mcp:
         id_token: ['email', 'email_verified', 'name', 'preferred_username', 'groups']
         access_token: ['email', 'email_verified', 'name', 'preferred_username', 'groups']
-    # The Client ID Metadata Documents of the tests are served on localhost.
-    special_use_address_guard:
-      allowed_networks: ['127.0.0.1/32', '::1/128']
     client_id_metadata_documents:
       enabled: true
       max_documents_per_host: 6
+      # The Client ID Metadata Documents of the tests are served on localhost.
+      allowed_networks: ['127.0.0.1/32', '::1/128']
       rules:
         - domain: 'localhost'
           authorization_policy: 'one_factor'
@@ -110,6 +109,7 @@ identity_providers:
           claims_policy: 'mcp'
           access_token_signed_response_alg: 'RS256'
           allow_loopback_redirect_uris: true
+          ports: [47643]
     token_exchange:
       token_types: ['urn:ietf:params:oauth:token-type:access_token']
       default_requested_token_type: 'urn:ietf:params:oauth:token-type:access_token'
