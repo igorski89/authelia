@@ -495,6 +495,7 @@ var Keys = []string{
 	"identity_providers.saml.service_providers[].entity_id",
 	"identity_providers.saml.service_providers[].groups",
 	"identity_providers.saml.service_providers[].name_id_format",
+	"identity_providers.saml.service_providers[].request_signature",
 	"identity_providers.saml.service_providers[].sign",
 	"identity_validation.elevated_session.characters",
 	"identity_validation.elevated_session.code_lifespan",

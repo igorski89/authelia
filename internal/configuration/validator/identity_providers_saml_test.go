@@ -86,3 +86,29 @@ func TestValidateSAMLErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateSAMLRequestSignature(t *testing.T) {
+	config := newSAMLTestConfig()
+	validator := schema.NewStructValidator()
+
+	validateSAML(config, validator)
+	require.Empty(t, validator.Errors())
+	assert.Equal(t, "verify", config.IdentityProviders.SAML.ServiceProviders[0].RequestSignature)
+
+	config = newSAMLTestConfig()
+	config.IdentityProviders.SAML.ServiceProviders[0].RequestSignature = "skip"
+	validator = schema.NewStructValidator()
+
+	validateSAML(config, validator)
+	require.NotEmpty(t, validator.Errors())
+	assert.Contains(t, validator.Errors()[0].Error(), "option 'request_signature' must be one of")
+
+	config = newSAMLTestConfig()
+	config.IdentityProviders.SAML.ServiceProviders[0].RequestSignature = "ignore"
+	config.IdentityProviders.SAML.ServiceProviders[0].Certificate = certRSA2048
+	validator = schema.NewStructValidator()
+
+	validateSAML(config, validator)
+	require.NotEmpty(t, validator.Errors())
+	assert.Contains(t, validator.Errors()[0].Error(), "can't be 'ignore' with option 'certificate'")
+}

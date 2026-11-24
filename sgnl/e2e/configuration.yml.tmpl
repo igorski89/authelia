@@ -63,6 +63,10 @@ identity_providers:
         assertion_consumer_service_urls: ['https://sp4.example.com/saml/acs']
         authorization_policy: 'one_factor'
         groups: ['admins']
+      - entity_id: 'https://sp5.example.com/saml/metadata'
+        assertion_consumer_service_urls: ['https://sp5.example.com/saml/acs']
+        authorization_policy: 'one_factor'
+        request_signature: 'ignore'
   oidc:
     hmac_secret: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
     jwks:

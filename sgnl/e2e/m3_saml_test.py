@@ -20,7 +20,7 @@ import http.client
 from lib import BASE, ISS, Client, admin_headers, check, forward_auth, login, summary
 
 DIR = os.environ['E2E_DIR']
-SPS = {name: 9100 + i for i, name in enumerate(['sp1', 'sp2', 'sp3', 'sp4', 'unknown'], start=1)}
+SPS = {name: 9100 + i for i, name in enumerate(['sp1', 'sp2', 'sp3', 'sp4', 'unknown', 'sp5'], start=1)}
 
 api, A = Client(), admin_headers()
 
@@ -266,6 +266,20 @@ check('a user outside the allowed groups gets RequestDenied, not an assertion', 
 # Unknown service provider.
 st, _, page = send_request(user, 'unknown')
 check('an unknown service provider gets no response', st >= 400 and 'SAMLResponse' not in page, f'{st} {page[:120]}')
+
+# request_signature: ignore (Keycloak without client signatures): a service provider which signs its requests without a
+# registered certificate is answered, in both bindings, and its ForceAuthn is ignored, as it can't be told from a request
+# anybody made.
+for binding in ['redirect', 'post']:
+    st, _, page = send_request(user, 'sp5', binding=binding, sign=True)
+    result = deliver('sp5', page)
+    check(f'request_signature ignore: a signed {binding} request is answered', result.get('name_id', '').startswith('sam'), result)
+st, _, page = send_request(user, 'sp1', sign=True)
+check('request_signature verify (default): a signed request without a registered certificate is refused', st == 400 and 'SAMLResponse' not in page, st)
+st, _, page = send_request(user, 'sp5')
+check('request_signature ignore: an unsigned request is answered', deliver('sp5', page).get('name_id', '').startswith('sam'))
+st, h, page = send_request(user, 'sp5', force=True, sign=True)
+check('request_signature ignore: ForceAuthn is ignored, the session stays', st == 200 and 'SAMLResponse' in page and forward_auth(user) == 200, f'{st} {h.get("Location")}')
 
 # ForceAuthn: the portal session ends and the user logs in again, then gets the response; the login is fresh.
 forced = Client()

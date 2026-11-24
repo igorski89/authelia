@@ -23,6 +23,9 @@ const (
 	samlSignResponse  = "response"
 	samlSignAssertion = "assertion"
 
+	samlRequestSignatureVerify = "verify"
+	samlRequestSignatureIgnore = "ignore"
+
 	// samlDefaultAssertionLifespan is how long an assertion is valid when no lifespan is configured.
 	samlDefaultAssertionLifespan = 5 * time.Minute
 
@@ -34,6 +37,7 @@ var (
 	validSAMLNameIDFormats         = []string{samlNameIDFormatEmail, samlNameIDFormatUnspecified}
 	validSAMLAuthorizationPolicies = []string{policyOneFactor, policyTwoFactor}
 	validSAMLSign                  = []string{samlSignBoth, samlSignResponse, samlSignAssertion}
+	validSAMLRequestSignatures     = []string{samlRequestSignatureVerify, samlRequestSignatureIgnore}
 	validSAMLAttributes            = []string{"username", "email", "name", "given_name", "family_name", "groups"}
 )
 
@@ -107,6 +111,10 @@ func validateSAMLServiceProvider(sp *schema.IdentityProvidersSAMLServiceProvider
 		}
 	}
 
+	if sp.Certificate.HasCertificates() && sp.RequestSignature == samlRequestSignatureIgnore {
+		validator.Push(fmt.Errorf(errFmtSAMLSP+"option 'request_signature' can't be 'ignore' with option 'certificate', which requires signed requests", sp.EntityID))
+	}
+
 	if sp.Certificate.HasCertificates() {
 		if err := sp.Certificate.Validate(); err != nil {
 			validator.Push(fmt.Errorf(errFmtSAMLSP+"option 'certificate' is not valid: %w", sp.EntityID, err))
@@ -116,6 +124,7 @@ func validateSAMLServiceProvider(sp *schema.IdentityProvidersSAMLServiceProvider
 	sp.NameIDFormat = samlDefault(sp.NameIDFormat, samlNameIDFormatEmail)
 	sp.AuthorizationPolicy = samlDefault(sp.AuthorizationPolicy, policyTwoFactor)
 	sp.Sign = samlDefault(sp.Sign, samlSignBoth)
+	sp.RequestSignature = samlDefault(sp.RequestSignature, samlRequestSignatureVerify)
 
 	for _, option := range []struct {
 		name, value string
@@ -124,6 +133,7 @@ func validateSAMLServiceProvider(sp *schema.IdentityProvidersSAMLServiceProvider
 		{"name_id_format", sp.NameIDFormat, validSAMLNameIDFormats},
 		{"authorization_policy", sp.AuthorizationPolicy, validSAMLAuthorizationPolicies},
 		{"sign", sp.Sign, validSAMLSign},
+		{"request_signature", sp.RequestSignature, validSAMLRequestSignatures},
 	} {
 		if !utils.IsStringInSlice(option.value, option.valid) {
 			validator.Push(fmt.Errorf(errFmtSAMLSP+"option '%s' must be one of %s but it's configured as '%s'", sp.EntityID, option.name, utils.StringJoinOr(option.valid), option.value))

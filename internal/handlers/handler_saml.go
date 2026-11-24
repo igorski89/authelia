@@ -90,6 +90,10 @@ func SAMLSSO(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// A service provider whose request signatures are ignored may still sign its requests, which the library would
+	// verify.
+	ctx.Providers.SAML.IgnoreRequestSignature(r)
+
 	rw.Header().Set("Content-Security-Policy", samlidp.ContentSecurityPolicy)
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 
@@ -233,6 +237,12 @@ func (p samlSessions) GetForcedSession(rw http.ResponseWriter, r *http.Request, 
 		http.Error(rw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 
 		return nil
+	}
+
+	// A request of a service provider whose signatures are ignored can't be told from one anybody made, so its
+	// ForceAuthn is ignored too: otherwise any site could end the user's portal session with it.
+	if ctx.Providers.SAML.ServiceProvider(req.ServiceProviderMetadata.EntityID).IgnoresRequestSignature() {
+		return p.GetSession(rw, r, req)
 	}
 
 	// A resumed request is answered for a login made after it. Otherwise, as when a cross-site HTTP-POST request didn't

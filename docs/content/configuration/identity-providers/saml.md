@@ -163,6 +163,16 @@ read from the user at every request.
 
 What is signed: `both` (the response and the assertion), `response`, or `assertion`.
 
+#### request_signature
+
+{{< confkey type="string" default="verify" required="no" >}}
+
+What happens to a signature of the service provider's authentication requests: `verify` checks it against the
+[certificate](#certificate), and refuses a signed request when there is none; `ignore` removes it and also ignores
+`ForceAuthn`, as Keycloak does without "Client signature required". Use `ignore` only for a service provider which signs
+its requests with a certificate that can't be registered: its requests can't then be told from a request anybody made.
+It can't be combined with a [certificate](#certificate).
+
 #### attributes
 
 {{< confkey type="list(string)" required="no" >}}
