@@ -72,6 +72,8 @@ Fork-only build files: `FORK.md`, `sgnl/` (image, CI scripts, the end-to-end tes
 
 Planned work that isn't started yet.
 
+- **SAML `ForceAuthn` interstitial** (see the M4 delta reviews): ask before ending the portal session for a forced
+  login, so another site can't end it; or a per-service-provider `force_authn` option.
 - **After M5, log clarity:** an implicit consent which can't be granted logs "the subject is null, the consent has
   already been granted, or the consent session is a pre-configured session", but the check is `!granted && now <
   expires_at`; name an expired consent separately (cost the rehearsal an hour, 2026-11-24).
@@ -279,6 +281,23 @@ Accepted, with the reviewers' agreement:
 - JWT access tokens which apps verify themselves stay valid until they expire (5 minutes).
 - The SAML idle session timeout is the portal's, as for OpenID Connect 1.0.
 - In-progress consent sessions aren't revoked: they need a portal session, which the revocation mark refuses.
+
+Delta reviews of `sgnl.9` (2026-11-24, two reviewers): no critical or high findings. Fixed in `sgnl.10`: the OpenID
+Connect 1.0 authorization endpoint and the password change checked no revocation mark (they load the session
+themselves); bearer forward auth didn't either; grants are compared exactly; marks keep the later time (upsert);
+userinfo fails closed; SAML requests in `SAMLRedirectQuery` and the body bypassed the size caps (a regression of
+`sgnl.9`); only requests which keep a pending request count against the SAML rate limit; the common multi-factor
+context classes are ranked and `better` is strict; an update of a user deleted meanwhile is not found.
+
+Accepted for the cutover, reconsidered with the Stripe test:
+
+- Logout CSRF through `ForceAuthn`: any page can end a user's portal session (not its app sessions or tokens) by
+  sending the browser an unsigned `ForceAuthn` request for a service provider whose requests aren't signed, such as
+  Stripe. Visible to the user and no access gained (low). The fix, an interstitial in the portal ("<service provider>
+  asks you to sign in again: Continue / Cancel") where only the same-origin Continue ends the session, is on the
+  backlog; whether Stripe sends `ForceAuthn` at all is seen in its captured request.
+- The client IP is the first `X-Forwarded-For` value, as upstream: the proxy in front of Authelia must not pass a
+  client's header through (SGNL's kamal-proxy has `forward_headers: false`, 2026-11-24).
 
 ### Consent tests (2026-11-24, `sgnl/e2e/m4_consent_test.py` in CI, 7 checks)
 
