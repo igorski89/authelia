@@ -33,8 +33,8 @@ Decided by igor on 2026-11-23. They replace the earlier "thin seams" approach.
    - Upstream's contiguity test (`internal/storage/migrations_test.go`) turns the nightly drift check red on a
      collision.
    - **Cutover freeze (agreed with sgnl-01, 2026-11-24):** only announced fixes are released until M5, and upstream
-     syncs wait until after it. The cutover candidate is `v4.40.0-sgnl.9` (the security review fixes, with migration
-     V0039), after `sgnl.8`.
+     syncs wait until after it. The cutover candidate is `v4.40.0-sgnl.10` (the fixes of the security review and its
+     delta reviews, with migration V0039), after `sgnl.8` and `sgnl.9`.
 3. **Kept in sync with upstream `master`**: merged by hand from time to time (igor, 2026-11-23). Syncs will conflict
    more often than with a thin fork; that cost is accepted. When upstream ships an equivalent feature, we compare the
    two and switch to theirs if we're ready to merge into it.
