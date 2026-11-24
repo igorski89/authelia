@@ -606,6 +606,20 @@ match exactly with the granted scopes/audience.
 
 [consent_mode]: #consent_mode
 
+### consent_implicit_offline_access
+
+{{< confkey type="boolean" default="false" required="no" >}}
+
+Allows a confidential client with the `implicit` [consent_mode] to get the `offline_access` (or `offline`) scope, and so
+a Refresh Token, without the consent screen. Without it a request for these scopes always shows the consent screen, and
+the implicit mode doesn't grant them. This setting is the administrator's consent for the client, the "other condition
+permitting offline access" of [OpenID Connect Core 1.0 Section 11](https://openid.net/specs/openid-connect-core-1_0.html#OfflineAccess);
+`prompt=consent`, `prompt=login`, and every other reason for the consent screen still show it.
+
+It requires the `implicit` [consent_mode] and can't be used with a public client.
+
+[consent_mode]: #consent_mode
+
 ### require_pushed_authorization_requests
 
 {{< confkey type="boolean" default="false" required="no" >}}

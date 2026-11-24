@@ -155,7 +155,9 @@ The file is the export of one realm with its users in the same file: kc.sh expor
 
 Every group is created, and every user with its group memberships, profile, enabled state, password hash (argon2 and pbkdf2, kept as they are), and WebAuthn credentials (passkeys and security keys, with their sign counts). The Keycloak user ID becomes the user's OpenID Connect 1.0 subject identifier (for clients with public subjects) and WebAuthn user handle, so apps see the same subject and passkeys keep working. The backup flags of the WebAuthn credentials, which Keycloak doesn't keep, are taken from their first sign in.
 
-Nothing is changed unless --apply is given: without it the import runs in a transaction which is rolled back, and reports what it would do. With it everything is imported in one transaction, or nothing. An existing username or email fails the import. Anything which can't be imported (one-time password credentials, subgroups, federated users, unknown hash algorithms) fails the import unless --skip-unsupported is given, which reports it instead. Service account users are always skipped.`
+Nothing is changed unless --apply is given: without it the import runs in a transaction which is rolled back, and reports what it would do. With it everything is imported in one transaction, or nothing. An existing username, email, or group fails the import. Anything which can't be imported (one-time password credentials, subgroups, federated users, usernames or emails Authelia can't hold, unknown hash algorithms) fails the import unless --skip-unsupported is given, which reports it instead. Password history is ignored, and service account users are always skipped.
+
+The --webauthn-rpid must be the RP ID the realm's WebAuthn policies set, if they set one, and the host of a configured authelia_url or a configured WebAuthn relying party.`
 	keycloak.Example = `authelia users import keycloak realm-export.json --webauthn-rpid example.com --config config.yml
 authelia users import keycloak realm-export.json --webauthn-rpid example.com --apply --config config.yml`
 

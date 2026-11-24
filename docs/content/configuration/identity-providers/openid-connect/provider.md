@@ -762,6 +762,13 @@ identity_providers:
               id_token: '1h'
 ```
 
+### default_claims_policy
+
+{{< confkey type="string" required="no" >}}
+
+The name of a [claims policy](#claims_policies) applied to every client which doesn't have its own `claims_policy`, for
+example to put the groups and email in every ID Token as Keycloak does. A client's own policy takes precedence.
+
 ### claims_policies
 
 {{< confkey type="string" syntax="dictionary" common="dictionary-reference" required="no" >}}

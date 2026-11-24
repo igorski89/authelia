@@ -59,5 +59,7 @@ authelia --config /etc/authelia/config/
 * [authelia config](authelia_config.md)	 - Perform config related actions
 * [authelia crypto](authelia_crypto.md)	 - Perform cryptographic operations
 * [authelia debug](authelia_debug.md)	 - Perform debug functions
+* [authelia groups](authelia_groups.md)	 - Manage the groups of the database authentication backend
 * [authelia storage](authelia_storage.md)	 - Manage the Authelia storage
+* [authelia users](authelia_users.md)	 - Manage the users of the database authentication backend
 
