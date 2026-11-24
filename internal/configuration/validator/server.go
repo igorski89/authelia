@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/authelia/authelia/v4/internal/configuration/schema"
 	"github.com/authelia/authelia/v4/internal/utils"
@@ -603,6 +602,8 @@ func validateServerPath(subpath string, validator *schema.StructValidator) {
 	}
 }
 
+// isServerPathRune returns true for the characters a path segment may have: ASCII letters and digits, '-', and '_'.
+// Other letters, such as non-ASCII ones, are not routed.
 func isServerPathRune(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsNumber(r) || r == '-' || r == '_'
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_'
 }

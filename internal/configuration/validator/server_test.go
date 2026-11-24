@@ -1525,11 +1525,12 @@ func TestValidateServerPathSegments(t *testing.T) {
 		{"ShouldAllowSingleSegment", "tcp://:9091/auth", "", "/auth"},
 		{"ShouldAllowKeycloakRealmPath", "tcp://:9091/realms/example-realm", "", "/realms/example-realm"},
 		{"ShouldAllowUnderscoreAndDigits", "tcp://:9091/a_1/b-2/c3", "", "/a_1/b-2/c3"},
-		{"ShouldAllowUnicodeLetters", "tcp://:9091/café", "", "/café"},
+		{"ShouldRaiseOnUnicodeLetters", "tcp://:9091/café", "server: option 'address' must have a path with only alphanumeric characters, '-' and '_' in each segment but it's configured as '/café'", ""},
 		{"ShouldRaiseOnTrailingSlash", "tcp://:9091/realms/example/", "server: option 'address' must not have empty path segments or a trailing slash but it's configured as '/realms/example/'", ""},
 		{"ShouldRaiseOnEmptySegment", "tcp://:9091/realms//example", "server: option 'address' must not have empty path segments or a trailing slash but it's configured as '/realms//example'", ""},
 		{"ShouldRaiseOnDot", "tcp://:9091/realms/ex.ample", "server: option 'address' must have a path with only alphanumeric characters, '-' and '_' in each segment but it's configured as '/realms/ex.ample'", ""},
 		{"ShouldRaiseOnRegexpCharacters", "tcp://:9091/realms/ex+ample", "server: option 'address' must have a path with only alphanumeric characters, '-' and '_' in each segment but it's configured as '/realms/ex+ample'", ""},
+		{"ShouldRaiseOnNonASCIILetters", "tcp://:9091/realms/exämple", "server: option 'address' must have a path with only alphanumeric characters, '-' and '_' in each segment but it's configured as '/realms/exämple'", ""},
 	}
 
 	for _, tc := range testCases {
