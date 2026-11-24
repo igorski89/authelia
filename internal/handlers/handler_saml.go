@@ -43,6 +43,9 @@ const (
 
 type ctxKeySAMLAutheliaCtx struct{}
 
+// samlClientAddressNone isn't an IP address, so assertions state no client address.
+const samlClientAddressNone = "none"
+
 // ctxKeySAMLFlowCreatedAt carries the time the flow of a resumed request was created, which a forced authentication
 // must be later than.
 type ctxKeySAMLFlowCreatedAt struct{}
@@ -318,7 +321,11 @@ func newSAMLSession(ctx *middlewares.AutheliaCtx, userSession *session.UserSessi
 		UserDisplayName: details.DisplayName,
 		UserGivenName:   details.GivenName,
 		UserSurname:     details.FamilyName,
-		ClientAddress:   ctx.RemoteIP().String(),
+		// The library states the client address as the Address of the SubjectConfirmationData and the SubjectLocality,
+		// falling back to the address of the request when it's empty, and leaves out a value which isn't an IP address.
+		// Leaving it out, as Keycloak does, doesn't disclose the user's IP address to service providers, nor fails those
+		// which check it behind a proxy.
+		ClientAddress: samlClientAddressNone,
 	}
 
 	if len(details.Emails) != 0 {

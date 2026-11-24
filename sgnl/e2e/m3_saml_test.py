@@ -137,6 +137,7 @@ check('the service provider accepts the response, NameID = email',
 check('RelayState comes back unchanged', result.get('relay_state') == 'relay-1', result)
 signed = base64.b64decode(html.unescape(re.search(r'name="SAMLResponse" value="([^"]*)"', page).group(1))).decode()
 check('sign both: the response and the assertion are signed', signed.count('SignatureValue>') == 4, signed.count('SignatureValue>'))
+check('the assertion states no client IP address', 'Address=' not in signed, re.findall(r'Address="[^"]*"', signed))
 check('the configured attributes are released', result.get('attributes', {}).get('groups') == ['staff']
       and result.get('attributes', {}).get('email') == ['sam@example.com'], result)
 
