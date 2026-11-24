@@ -918,7 +918,8 @@ func TestIsOAuth2TokenExchangeOwnToken(t *testing.T) {
 		{"ShouldBeOwnForStoredSubjectOfRequestingClient", &oidc.RegisteredClient{ID: testOIDCTokenExchangeID}, true, oidc.TokenTypeAccessToken, true},
 		{"ShouldBeCrossClientForStoredSubjectOfAnotherClient", &oidc.RegisteredClient{ID: testOIDCAuthorizationCodeID}, true, oidc.TokenTypeAccessToken, false},
 		{"ShouldBeCrossClientForStoredSubjectOfAnotherClientClaimingIDToken", &oidc.RegisteredClient{ID: testOIDCAuthorizationCodeID}, true, oidc.TokenTypeIDToken, false},
-		{"ShouldBeOwnForNonStoredIDTokenSubject", nil, false, oidc.TokenTypeIDToken, true},
+		// The fork never takes an ID Token for the client's own token, which would skip the consent and impersonation checks.
+		{"ShouldNotBeOwnForNonStoredIDTokenSubject", nil, false, oidc.TokenTypeIDToken, false},
 		{"ShouldBeCrossClientForNonStoredJWTSubject", nil, false, "urn:ietf:params:oauth:token-type:jwt", false},
 		{"ShouldBeCrossClientForNonStoredAccessTokenSubject", nil, false, oidc.TokenTypeAccessToken, false},
 		{"ShouldBeCrossClientForNonStoredSubjectWithoutType", nil, false, "", false},

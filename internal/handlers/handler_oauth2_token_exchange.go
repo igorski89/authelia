@@ -23,6 +23,12 @@ func handleOAuth2TokenExchangePolicy(ctx *middlewares.AutheliaCtx, requester oau
 	own := isOAuth2TokenExchangeOwnToken(requester, client, session)
 	cc := oidc.TokenExchangeSubjectClientCredentials(session)
 
+	// Delegation with an 'actor_token' isn't supported: refuse it before anything else, rather than relying on the
+	// library to refuse tokens without a 'may_act' claim.
+	if form := requester.GetRequestForm(); form.Get(oidc.FormParameterActorToken) != "" || form.Get(oidc.FormParameterActorTokenType) != "" {
+		return nil, oauthelia2.ErrInvalidRequest.WithHint("The 'actor_token' is not supported.")
+	}
+
 	if !own && cc {
 		return nil, oauthelia2.ErrInvalidGrant.WithHint("A token issued via the client credentials grant may only be exchanged by the client it was issued to.")
 	}
@@ -47,7 +53,7 @@ func handleOAuth2TokenExchangePolicy(ctx *middlewares.AutheliaCtx, requester oau
 		}
 	}
 
-	if err = handleOAuth2TokenExchangeAuthorizationPolicy(ctx, client, session, details); err != nil {
+	if err = handleOAuth2TokenExchangeAuthorizationPolicy(ctx, requester, client, session, details); err != nil {
 		return nil, err
 	}
 
@@ -165,7 +171,7 @@ func setOAuth2TokenExchangeLogField(fields map[string]any, key, value string) {
 	}
 }
 
-func isOAuth2TokenExchangeOwnToken(requester oauthelia2.AccessRequester, client oauthelia2.Client, session *oidc.Session) (own bool) {
+func isOAuth2TokenExchangeOwnToken(_ oauthelia2.AccessRequester, client oauthelia2.Client, session *oidc.Session) (own bool) {
 	if clientID, stored := oidc.TokenExchangeSubjectClientID(session); stored {
 		return clientID == client.GetID()
 	}
@@ -174,7 +180,9 @@ func isOAuth2TokenExchangeOwnToken(requester oauthelia2.AccessRequester, client 
 		return false
 	}
 
-	return requester.GetRequestForm().Get(oidc.FormParameterSubjectTokenType) == oidc.TokenTypeIDToken
+	// An ID Token isn't accepted as a 'subject_token', and it is never taken as the client's own token, which would skip
+	// the consent and impersonation checks.
+	return false
 }
 
 func handleOAuth2TokenExchangeConsent(ctx *middlewares.AutheliaCtx, requester oauthelia2.AccessRequester, client oidc.Client, session *oidc.Session) (details *authentication.UserDetailsExtended, err error) {
@@ -263,21 +271,43 @@ func handleOAuth2TokenExchangeResolveSubject(ctx *middlewares.AutheliaCtx, reque
 	return details, nil
 }
 
-func handleOAuth2TokenExchangeAuthorizationPolicy(ctx *middlewares.AutheliaCtx, client oidc.Client, session *oidc.Session, details *authentication.UserDetailsExtended) (err error) {
+func handleOAuth2TokenExchangeAuthorizationPolicy(ctx *middlewares.AutheliaCtx, requester oauthelia2.AccessRequester, client oidc.Client, session *oidc.Session, details *authentication.UserDetailsExtended) (err error) {
 	have := authentication.OneFactor
 
 	if session.DefaultSession != nil && session.Claims != nil && authorization.NewAuthenticationMethodsReferencesFromClaim(session.Claims.AuthenticationMethodsReferences).MultiFactorAuthentication() {
 		have = authentication.TwoFactor
 	}
 
-	required := client.GetAuthorizationPolicyRequiredLevel(authorization.Subject{Username: details.Username, Groups: details.Groups, IP: ctx.RemoteIP()})
+	// The exchanged token is for the client performing the exchange and for every audience or resource it is granted,
+	// so each of these which is a registered client must permit the user as well: otherwise a user that client refuses
+	// would get a token for it through the exchange.
+	clients := []oidc.Client{client}
 
-	if required == authorization.Denied {
-		return oauthelia2.ErrInvalidGrant.WithHint("The client's authorization policy does not permit this user.")
+	for _, audience := range oauthelia2.JoinGrantedAudienceAndResource(requester.GetGrantedAudience(), requester.GetGrantedResource()) {
+		if audience == client.GetID() {
+			continue
+		}
+
+		if target, err := ctx.Providers.OpenIDConnect.GetRegisteredClient(ctx, audience); err == nil && target != nil {
+			clients = append(clients, target)
+		}
 	}
 
-	if !authorization.IsAuthLevelSufficient(have, required) {
-		return oauthelia2.ErrInvalidGrant.WithHint("The authentication level of the 'subject_token' is insufficient for the client's authorization policy.")
+	for _, c := range clients {
+		required := c.GetAuthorizationPolicyRequiredLevel(authorization.Subject{Username: details.Username, Groups: details.Groups, IP: ctx.RemoteIP()})
+
+		own := c.GetID() == client.GetID()
+
+		switch {
+		case required == authorization.Denied && own:
+			return oauthelia2.ErrInvalidGrant.WithHint("The client's authorization policy does not permit this user.")
+		case required == authorization.Denied:
+			return oauthelia2.ErrInvalidGrant.WithHintf("The authorization policy of the audience client '%s' does not permit this user.", c.GetID())
+		case !authorization.IsAuthLevelSufficient(have, required) && own:
+			return oauthelia2.ErrInvalidGrant.WithHint("The authentication level of the 'subject_token' is insufficient for the client's authorization policy.")
+		case !authorization.IsAuthLevelSufficient(have, required):
+			return oauthelia2.ErrInvalidGrant.WithHintf("The authentication level of the 'subject_token' is insufficient for the authorization policy of the audience client '%s'.", c.GetID())
+		}
 	}
 
 	return nil

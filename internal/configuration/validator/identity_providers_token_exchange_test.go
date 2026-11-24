@@ -5,6 +5,7 @@
 package validator
 
 import (
+	"net"
 	"slices"
 	"testing"
 
@@ -135,4 +136,28 @@ func TestValidateOIDCClientTokenExchangeExclusions(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateOIDCClientTokenExchangeNetworksAndConsent(t *testing.T) {
+	_, network, _ := net.ParseCIDR("10.0.0.0/8")
+
+	config := &schema.IdentityProvidersOpenIDConnect{
+		AuthorizationPolicies: map[string]schema.IdentityProvidersOpenIDConnectPolicy{
+			"office": {DefaultPolicy: "deny", Rules: []schema.IdentityProvidersOpenIDConnectPolicyRule{{Policy: "one_factor", Networks: []*net.IPNet{network}}}},
+		},
+		Clients: []schema.IdentityProvidersOpenIDConnectClient{
+			{ID: "gateway", GrantTypes: []string{oidc.GrantTypeTokenExchange}, AuthorizationPolicy: "one_factor", Audience: []string{"app"}},
+			{ID: "app", AuthorizationPolicy: "office"},
+			{ID: "login", ConsentMode: "implicit", SubjectTokenClientsSupported: []schema.IdentityProvidersOpenIDConnectClientTokenExchangePolicy{{ClientID: "gateway"}}},
+		},
+	}
+
+	validator := schema.NewStructValidator()
+
+	validateOIDCClientTokenExchangeExclusions(0, config, validator, true)
+	validateOIDCClientTokenExchangeSubjectConsent(2, config, validator)
+
+	require.Len(t, validator.Errors(), 2)
+	assert.Contains(t, validator.Errors()[0].Error(), "option 'authorization_policy' of the client 'app' is 'office', which has rules with 'networks'")
+	assert.Contains(t, validator.Errors()[1].Error(), "client 'login': option 'consent_mode' must not be 'implicit' with option 'subject_token_clients_supported'")
 }

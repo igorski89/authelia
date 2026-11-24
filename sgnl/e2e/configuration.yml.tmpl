@@ -81,7 +81,9 @@ identity_providers:
         mcp_exchange:
           grants:
             token_exchange:
-              access_token: '5m'
+              access_token: '1h'
+        mcp_login:
+          access_token: '2m'
     default_claims_policy: 'app_groups'
     claims_policies:
       app_groups:
@@ -102,10 +104,11 @@ identity_providers:
         grant_types: ['authorization_code']
         pkce_challenge_method: 'S256'
         token_endpoint_auth_method: 'none'
-        audience: ['mcp-gateway']
+        audience: ['mcp-gateway', 'aud-only']
         requested_audience_mode: 'implicit'
         access_token_signed_response_alg: 'RS256'
         claims_policy: 'mcp'
+        lifespan: 'mcp_login'
         subject_token_clients_supported: ['mcp-gateway']
       - client_id: 'mcp-gateway'
         client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
@@ -118,7 +121,7 @@ identity_providers:
         request_token_types_supported: ['urn:ietf:params:oauth:token-type:access_token']
         impersonation_allowed: true
         access_token_signed_response_alg: 'RS256'
-        audience: ['mcp-gateway', 'stalwart']
+        audience: ['mcp-gateway', 'stalwart', 'strict-app']
         claims_policy: 'mcp'
         lifespan: 'mcp_exchange'
       - client_id: 'capped'
@@ -131,6 +134,22 @@ identity_providers:
         consent_mode: 'implicit'
         consent_implicit_offline_access: true
         lifespan: 'capped'
+      - client_id: 'aud-only'
+        client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
+        authorization_policy: 'one_factor'
+        consent_mode: 'implicit'
+        token_endpoint_auth_method: 'client_secret_basic'
+        scopes: ['openid']
+        grant_types: ['urn:ietf:params:oauth:grant-type:token-exchange']
+        impersonation_allowed: true
+        audience: ['aud-only']
+      - client_id: 'strict-app'
+        client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
+        redirect_uris: ['https://strict.example.com/cb']
+        authorization_policy: 'two_factor'
+        scopes: ['openid']
+        grant_types: ['authorization_code']
+        response_types: ['code']
       - client_id: 'not-permitted'
         client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
         authorization_policy: 'one_factor'

@@ -98,7 +98,8 @@ check('exchange: the same person claims as the login token',
       all(ex_claims.get(k) == login_claims.get(k) for k in ('preferred_username', 'email', 'name', 'groups')),
       {k: (login_claims.get(k), ex_claims.get(k)) for k in ('preferred_username', 'email', 'name', 'groups')})
 check('exchange: the openid scope', 'openid' in exchanged.get('scope', '').split(), exchanged.get('scope'))
-check('exchange: never outlives the login token', 0 < ex_claims.get('exp', 0) <= login_claims.get('exp', 0), (ex_claims.get('exp'), login_claims.get('exp')))
+# The login token lives 2 minutes and the gateway's exchanged tokens 1 hour, so the cap is what limits it.
+check('exchange: never outlives the login token (capped below the 1 hour lifespan)', 0 < ex_claims.get('exp', 0) <= login_claims.get('exp', 0) and exchanged.get('expires_in', 3600) <= 120, (ex_claims.get('exp'), login_claims.get('exp'), exchanged.get('expires_in')))
 check('exchange: the same issuer', ex_claims.get('iss') == login_claims.get('iss'), ex_claims.get('iss'))
 
 st, _, body = Client().req('GET', '/api/oidc/userinfo', None, {'Authorization': f'Bearer {token}'})
@@ -120,10 +121,29 @@ check('exchange with an audience outside the client\'s list is refused', st == 4
 # The client may request openid, so only the permission of the login client can refuse it.
 st, body = exchange(login_token, client='not-permitted', scope='openid')
 check('a client the login client doesn\'t permit is refused, for that reason', st == 400 and 'access_token' not in body and body.get('error') != 'invalid_scope', f'{st} {body}')
+# 'aud-only' is in the login token's audience and may request openid, so only subject_token_clients_supported of the
+# login client refuses it.
+st, body = exchange(login_token, client='aud-only', scope='openid')
+check('a client in the audience but not permitted by the login client is refused', st == 400 and 'access_token' not in body, f'{st} {body}')
+
+# The audience of the exchanged token must permit the user too: 'strict-app' requires two factors, the login one.
+st, body = exchange(login_token, audience='strict-app')
+check('an audience whose authorization policy the login doesn\'t satisfy is refused', st == 400 and 'access_token' not in body, f'{st} {body}')
+
+# Delegation isn't supported.
+st, body = exchange(login_token, actor_token=login_token, actor_token_type=ACCESS_TOKEN)
+check('an actor_token is refused', st == 400 and 'access_token' not in body, f'{st} {body}')
 st, body = exchange(login_token, secret='wrong-secret')
 check('a wrong client secret is refused (invalid_client)', st == 401 and body.get('error') == 'invalid_client', f'{st} {body}')
 st, body = exchange(login_token[:-4] + 'AAAA')
 check('a tampered subject token is refused', st == 400 and 'access_token' not in body, f'{st} {body}')
+# A changed payload keeps the signature the token is looked up by, so this reaches the signature verification.
+head, payload, signature = login_token.split('.')
+forged = json.loads(base64.urlsafe_b64decode(payload + '=' * (-len(payload) % 4)))
+forged['groups'] = ['admins']
+forged_payload = base64.urlsafe_b64encode(json.dumps(forged).encode()).rstrip(b'=').decode()
+st, body = exchange(f'{head}.{forged_payload}.{signature}')
+check('a subject token with a changed payload (signature kept) is refused', st == 400 and 'access_token' not in body, f'{st} {body}')
 tampered_error = body.get('error')
 st, body = exchange(login_token, requested_token_type='urn:ietf:params:oauth:token-type:refresh_token')
 check('a refresh token can\'t be requested', st == 400 and 'refresh_token' not in body, f'{st} {body}')
@@ -133,6 +153,16 @@ st, body = exchange(token)
 check('an exchanged token can\'t be exchanged again (own token)', st == 400 and 'access_token' not in body, f'{st} {body}')
 st, _, body = Client().req('GET', '/api/admin/whoami', None, {'Authorization': f'Bearer {token}'})
 check('the exchanged token is no administration token', st in (401, 403), f'{st} {body[:120]}')
+
+# A disabled user's login token can't be exchanged; enabled again, a new login works.
+api.req('PATCH', '/api/admin/users/mcpuser', {'disabled': True}, A)
+st, body = exchange(login_token)
+check('a disabled user\'s login token is refused', st == 400 and 'access_token' not in body, f'{st} {body}')
+api.req('PATCH', '/api/admin/users/mcpuser', {'disabled': False}, A)
+login_token = pkce_login().get('access_token', '')
+st, exchanged = exchange(login_token)
+token = exchanged.get('access_token', '')
+check('enabled again: a new login is exchanged', st == 200 and token, f'{st} {exchanged}')
 
 # A logout ends the exchanged token, and the login token can't be exchanged any more.
 api.req('POST', '/api/admin/users/mcpuser/logout', None, A)
