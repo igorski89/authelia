@@ -75,6 +75,9 @@ identity_providers:
       custom:
         short:
           access_token: '2s'
+        capped:
+          refresh_token: '3s'
+          refresh_token_maximum: '6s'
         mcp_exchange:
           grants:
             token_exchange:
@@ -118,6 +121,16 @@ identity_providers:
         audience: ['mcp-gateway', 'stalwart']
         claims_policy: 'mcp'
         lifespan: 'mcp_exchange'
+      - client_id: 'capped'
+        client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
+        redirect_uris: ['https://app.example.com/cb']
+        scopes: ['openid', 'offline_access']
+        grant_types: ['authorization_code', 'refresh_token']
+        response_types: ['code']
+        authorization_policy: 'one_factor'
+        consent_mode: 'implicit'
+        consent_implicit_offline_access: true
+        lifespan: 'capped'
       - client_id: 'not-permitted'
         client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
         authorization_policy: 'one_factor'

@@ -90,6 +90,9 @@ Planned work that isn't started yet.
     in without registering first; advertise `client_id_metadata_document_supported` in discovery.
   - Resource indicators / audience for the gateway's `/mcp` URL.
   - RFC 8693 token exchange: built on branch `sgnl-mcp` (see the changes table), not released yet.
+  - Refresh token lifetimes need no change: each refresh starts `lifespans.refresh_token` again (an idle limit), and
+    `lifespans.refresh_token_maximum` caps a grant from its first refresh token (both per client with `lifespan`);
+    tested in `sgnl/e2e/m6_refresh_lifetime_test.py`.
 
 ## Build
 
