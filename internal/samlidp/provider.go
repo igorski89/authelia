@@ -151,6 +151,7 @@ func (p *Provider) IdentityProvider(issuer *url.URL, sessions saml.SessionProvid
 		IssuancePolicy:          issuancePolicy{provider: p},
 		NameIDProvider:          nameIDProvider{},
 		NameIDPolicyEnforcer:    nameIDPolicyEnforcer{},
+		AuthnContextEnforcer:    authnContextEnforcer{},
 		AttributeReleasePolicy:  attributeReleasePolicy{provider: p},
 		AssertionLifetime:       p.config.AssertionLifespan,
 		MaxAuthnRequestAge:      maxAuthnRequestAge,

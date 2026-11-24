@@ -38,7 +38,7 @@ const (
 	samlEndpointPathResume = "/api/saml/sso/resume"
 
 	// samlRefedsMFA is the authentication context class of a session with two factors.
-	samlRefedsMFA = "https://refeds.org/profile/mfa"
+	samlRefedsMFA = samlidp.AuthnContextRefedsMFA
 )
 
 type ctxKeySAMLAutheliaCtx struct{}

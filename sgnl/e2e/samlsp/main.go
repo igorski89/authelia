@@ -4,7 +4,7 @@
 
 // Command samlsp is a SAML 2.0 service provider for the end-to-end tests. The Python tests drive it over HTTP:
 //
-//	GET  /start?binding=redirect|post[&sign=1][&force=1][&acs=URL]  returns the authentication request to send to the identity
+//	GET  /start?binding=redirect|post[&sign=1][&force=1][&acs=URL][&class=REF&comparison=C]  returns the authentication request to send to the identity
 //	                                                      provider: {"url": ...} or {"url": ..., "form": {...}}
 //	POST /acs                                             checks a response (form field SAMLResponse) and returns
 //	                                                      {"name_id": ..., "attributes": {...}} or {"error": ...}
@@ -103,6 +103,11 @@ func (t *tracker) start(w http.ResponseWriter, r *http.Request) {
 
 	if r.URL.Query().Get("force") == "1" {
 		s.ForceAuthn = new(true)
+	}
+
+	// A requested authentication context: class=<ref> and comparison=exact|minimum|maximum|better.
+	if class := r.URL.Query().Get("class"); class != "" {
+		s.RequestedAuthnContext = &saml.RequestedAuthnContext{Comparison: r.URL.Query().Get("comparison"), AuthnContextClassRefs: []string{class}}
 	}
 
 	if acs := r.URL.Query().Get("acs"); acs != "" {

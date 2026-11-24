@@ -71,9 +71,10 @@ def idp_path(url):
     return urllib.parse.urlparse(url).path[len(BASE):] + ('?' + urllib.parse.urlparse(url).query if urllib.parse.urlparse(url).query else '')
 
 
-def send_request(client, name, binding='redirect', sign=False, force=False, acs='', tamper=False, start=None):
+def send_request(client, name, binding='redirect', sign=False, force=False, acs='', tamper=False, start=None, context=None):
     """Sends an authentication request of the service provider through the client and returns the HTTP answer."""
-    start = start or sp(name, 'GET', f'/start?binding={binding}&sign={int(sign)}&force={int(force)}&acs={urllib.parse.quote(acs)}')
+    extra = f'&class={urllib.parse.quote(context[0])}&comparison={context[1]}' if context else ''
+    start = start or sp(name, 'GET', f'/start?binding={binding}&sign={int(sign)}&force={int(force)}&acs={urllib.parse.quote(acs)}{extra}')
 
     if tamper:
         # Changes the signed request after signing: the signature no longer covers it.
@@ -158,6 +159,23 @@ st, _, b = expiring.req('POST', '/api/firstfactor', {'username': 'sam', 'passwor
 check('after login, an expired flow is not resumed', st != 200 or '/api/saml/sso/resume' not in b, b[:160])
 st, _, _ = expiring.req('GET', f'/api/saml/sso/resume?flow_id={fid_expired}')
 check('an expired flow is refused at the resume endpoint', st == 400)
+
+# Requested authentication contexts (the session is one factor: PasswordProtectedTransport). Only a class stronger than
+# the session's is refused; a weaker or unknown class is answered, as Keycloak does.
+PPT = 'urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport'
+for name, context, ok in [
+    ('the session\'s own class, exact', (PPT, 'exact'), True),
+    ('a weaker class, minimum', ('urn:oasis:names:tc:SAML:2.0:ac:classes:Password', 'minimum'), True),
+    ('a weaker class, exact', ('urn:oasis:names:tc:SAML:2.0:ac:classes:Password', 'exact'), True),
+    ('an unknown class, exact', ('urn:example:unknown-class', 'exact'), True),
+    ('MFA, minimum (stronger than the session)', ('https://refeds.org/profile/mfa', 'minimum'), False),
+]:
+    st, _, page = send_request(user, 'sp1', context=context)
+    result = deliver('sp1', page)
+    if ok:
+        check(f'requested context {name}: answered', result.get('name_id') == 'sam@example.com', result)
+    else:
+        check(f'requested context {name}: NoAuthnContext', any(c.endswith(':NoAuthnContext') for c in result.get('status_codes') or []), result)
 
 # A logged in user gets the response at once, with the HTTP-POST binding and at Keycloak's path.
 st, _, page = send_request(user, 'sp1', binding='post')

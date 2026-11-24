@@ -5,6 +5,7 @@
 package samlidp
 
 import (
+	"fmt"
 	"net/http"
 	"slices"
 
@@ -130,4 +131,46 @@ type nameIDPolicyEnforcer struct{}
 // EnforceNameIDPolicy implements saml.NameIDPolicyEnforcer.
 func (nameIDPolicyEnforcer) EnforceNameIDPolicy(_ *saml.IdpAuthnRequest, _ *saml.Session) error {
 	return nil
+}
+
+// Authentication context classes the identity provider asserts, and their strength.
+//
+//nolint:gosec // These are SAML authentication context class references, not credentials.
+const (
+	AuthnContextPassword                   = "urn:oasis:names:tc:SAML:2.0:ac:classes:Password"
+	AuthnContextPasswordProtectedTransport = "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport"
+	AuthnContextRefedsMFA                  = "https://refeds.org/profile/mfa"
+)
+
+var authnContextStrength = map[string]int{
+	AuthnContextPassword:                   1,
+	AuthnContextPasswordProtectedTransport: 2,
+	AuthnContextRefedsMFA:                  3,
+}
+
+// authnContextEnforcer refuses a request only when the session is weaker than every class it requests, whatever the
+// comparison: a session at least as strong as a requested class, or a class it can't rank, is answered, as Keycloak
+// answers requests without enforcing the requested context. A service provider which asks for PasswordProtectedTransport
+// exactly then still gets the assertion of a two factor session, which states the stronger class it really has.
+type authnContextEnforcer struct{}
+
+// SatisfiesAuthnContext implements saml.AuthnContextEnforcer.
+func (authnContextEnforcer) SatisfiesAuthnContext(requested *saml.RequestedAuthnContext, session *saml.Session) error {
+	if requested == nil || len(requested.AuthnContextClassRefs) == 0 {
+		return nil
+	}
+
+	asserted := session.AuthnContextClassRef
+	if asserted == "" {
+		asserted = AuthnContextPasswordProtectedTransport
+	}
+
+	for _, class := range requested.AuthnContextClassRefs {
+		strength, known := authnContextStrength[class]
+		if !known || authnContextStrength[asserted] >= strength {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("the authentication of the session (%s) is weaker than every requested class", asserted)
 }
