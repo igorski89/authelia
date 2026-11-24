@@ -111,9 +111,9 @@ with open(SAMPLES, 'w') as f:
                'exchanged_token': {'header': header(token) if token else None, 'claims': ex_claims, 'response': {k: v for k, v in exchanged.items() if k != 'access_token'}}}, f, indent=2)
 
 # Audiences.
-st, body = exchange(login_token, audience='stalwart')
+st, body = exchange(login_token, audience='test')
 aud_claims = claims(body['access_token']) if st == 200 else {}
-check('exchange with audience stalwart: its aud contains stalwart', 'stalwart' in (aud_claims.get('aud') or []), f'{st} {aud_claims.get("aud")}')
+check('exchange with audience test (a one factor app): its aud contains test', 'test' in (aud_claims.get('aud') or []), f'{st} {aud_claims.get("aud")}')
 st, body = exchange(login_token, audience='evil')
 check('exchange with an audience outside the client\'s list is refused', st == 400, f'{st} {body}')
 

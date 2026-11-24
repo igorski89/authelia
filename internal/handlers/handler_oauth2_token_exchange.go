@@ -288,9 +288,14 @@ func handleOAuth2TokenExchangeAuthorizationPolicy(ctx *middlewares.AutheliaCtx, 
 			continue
 		}
 
-		if target, err := ctx.Providers.OpenIDConnect.GetRegisteredClient(ctx, audience); err == nil && target != nil {
-			clients = append(clients, target)
+		target, err := ctx.Providers.OpenIDConnect.GetRegisteredClient(ctx, audience)
+		if err != nil || target == nil {
+			// The validator only lets registered client IDs into the audience of an exchange client; anything else
+			// would get a token without the policy of the app which accepts it.
+			return oauthelia2.ErrInvalidTarget.WithHintf("The audience or resource '%s' is not a registered client.", audience)
 		}
+
+		clients = append(clients, target)
 	}
 
 	for _, c := range clients {

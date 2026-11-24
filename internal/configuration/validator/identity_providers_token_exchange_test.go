@@ -161,3 +161,32 @@ func TestValidateOIDCClientTokenExchangeNetworksAndConsent(t *testing.T) {
 	assert.Contains(t, validator.Errors()[0].Error(), "option 'authorization_policy' of the client 'app' is 'office', which has rules with 'networks'")
 	assert.Contains(t, validator.Errors()[1].Error(), "client 'login': option 'consent_mode' must not be 'implicit' with option 'subject_token_clients_supported'")
 }
+
+func TestValidateOIDCClientTokenExchangeTargets(t *testing.T) {
+	_, network, _ := net.ParseCIDR("10.0.0.0/8")
+
+	config := &schema.IdentityProvidersOpenIDConnect{
+		AuthorizationPolicies: map[string]schema.IdentityProvidersOpenIDConnectPolicy{
+			"office": {DefaultPolicy: "deny", Rules: []schema.IdentityProvidersOpenIDConnectPolicyRule{{Policy: "one_factor", Networks: []*net.IPNet{network}}}},
+		},
+		Clients: []schema.IdentityProvidersOpenIDConnectClient{
+			{ID: "gateway", GrantTypes: []string{oidc.GrantTypeTokenExchange}, AuthorizationPolicy: "one_factor",
+				Audience: []string{"gateway", "https://cloud.example.com"}, Resource: []string{"office-app"}, AudienceStrategy: "wildcard"},
+			{ID: "office-app", AuthorizationPolicy: "office"},
+		},
+	}
+
+	validator := schema.NewStructValidator()
+
+	validateOIDCClientTokenExchangeExclusions(0, config, validator, true)
+
+	errs := make([]string, 0, len(validator.Errors()))
+	for _, err := range validator.Errors() {
+		errs = append(errs, err.Error())
+	}
+
+	require.Len(t, errs, 3, errs)
+	assert.Contains(t, errs[0], "option 'audience_strategy' must be 'exact'")
+	assert.Contains(t, errs[1], "must only contain registered client IDs with the token exchange grant type, but they contain 'https://cloud.example.com'")
+	assert.Contains(t, errs[2], "option 'authorization_policy' of the client 'office-app' is 'office', which has rules with 'networks'")
+}

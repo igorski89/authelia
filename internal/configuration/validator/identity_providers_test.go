@@ -6926,7 +6926,11 @@ func TestValidateOIDCClientTokenExchange(t *testing.T) {
 					},
 				},
 			},
-			[]string{"identity_providers: oidc: clients: client 'test': option 'subject_token_clients_supported' must only reference registered clients but the client 'nonexistent' does not exist"},
+			[]string{
+				"identity_providers: oidc: clients: client 'test': option 'subject_token_clients_supported' must only reference registered clients but the client 'nonexistent' does not exist",
+				// The fork also requires the audience of a client with the token exchange grant to be registered clients.
+				"identity_providers: oidc: clients: client 'test': options 'audience' and 'resource' must only contain registered client IDs with the token exchange grant type, but they contain 'nonexistent'",
+			},
 			nil,
 			nil,
 		},

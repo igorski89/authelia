@@ -1142,3 +1142,24 @@ func TestOAuth2TokenPOSTTokenExchangeAudit(t *testing.T) {
 		assert.Empty(t, getTestOIDCTokenExchangeAuditEntries(mock))
 	})
 }
+
+// TestHandleOAuth2TokenExchangePolicyRefusesActorTokens checks the fork's up-front refusal of delegation directly: the
+// library refuses an actor token without a 'may_act' claim first in a full request, which would hide a regression here.
+func TestHandleOAuth2TokenExchangePolicyRefusesActorTokens(t *testing.T) {
+	for _, form := range []url.Values{
+		{oidc.FormParameterActorToken: []string{"a-token"}},
+		{oidc.FormParameterActorTokenType: []string{oidc.TokenTypeAccessToken}},
+	} {
+		mock := mocks.NewMockAutheliaCtx(t)
+
+		requester := &oauthelia2.AccessRequest{Request: oauthelia2.Request{Form: form, Session: oidc.NewSession()}}
+
+		details, err := handleOAuth2TokenExchangePolicy(mock.Ctx, requester, &oidc.RegisteredClient{ID: testOIDCTokenExchangeID, ImpersonationAllowed: true}, oidc.NewSession())
+
+		assert.Nil(t, details)
+		require.Error(t, err)
+		assert.Contains(t, oauthelia2.ErrorToDebugRFC6749Error(err).Error(), "The 'actor_token' is not supported.")
+
+		mock.Close()
+	}
+}
