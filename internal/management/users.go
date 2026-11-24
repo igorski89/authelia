@@ -697,15 +697,16 @@ func (s *Service) digest(password Password) (digest sql.NullString, err error) {
 
 		return sql.NullString{String: d.Encode(), Valid: true}, nil
 	case password.Digest != "":
-		if _, err = schema.DecodePasswordDigest(password.Digest); err != nil {
+		var decoded *schema.PasswordDigest
+
+		if decoded, err = schema.DecodePasswordDigest(password.Digest); err != nil {
 			return digest, fmt.Errorf("%w: the password digest is not a supported PHC string: %w", ErrInvalid, err)
 		}
 
-		// The plaintext and base64 schemes would store the password itself and skip the password policy.
-		for _, prefix := range []string{"$plaintext$", "$base64$"} {
-			if strings.HasPrefix(password.Digest, prefix) {
-				return digest, fmt.Errorf("%w: the password digest must be a hash such as argon2id, scrypt, pbkdf2, bcrypt, or sha2crypt, not a stored password", ErrInvalid)
-			}
+		// The plaintext and base64 schemes would store the password itself and skip the password policy. They are
+		// refused by the decoded type, as a prefix such as {CRYPT} hides the scheme from a check of the string.
+		if decoded.IsPlainText() {
+			return digest, fmt.Errorf("%w: the password digest must be a hash such as argon2id, scrypt, pbkdf2, bcrypt, or sha2crypt, not a stored password", ErrInvalid)
 		}
 
 		return sql.NullString{String: password.Digest, Valid: true}, nil

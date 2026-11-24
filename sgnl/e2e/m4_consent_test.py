@@ -51,4 +51,20 @@ check('prompt=consent still shows the consent screen', 'consent' in location and
 location = authorization('implicit-offline', 'openid profile offline_access', prompt='none')
 check('prompt=none gets a code, not consent_required', 'code=' in location, location)
 
+# RFC 8707: a client sending its own URL as the resource, as Stalwart's web UI does, needs it in the client's resource
+# allow-list; other resources are refused.
+location = authorization('implicit-offline', 'openid profile', resource='https://mail.example.com')
+check('a resource in the client\'s allow-list is accepted', 'code=' in location, location)
+code = urllib.parse.parse_qs(urllib.parse.urlparse(location).query).get('code', [''])[0]
+_, _, body = Client().req('POST', '/api/oidc/token', {'grant_type': 'authorization_code', 'code': code,
+                                                      'redirect_uri': 'https://app.example.com/cb'},
+                          basic('implicit-offline'), form=True)
+check('the token response for a resource request is issued', 'access_token' in json.loads(body), body[:200])
+
+location = authorization('implicit-offline', 'openid profile', resource='https://other.example.com')
+check('a resource outside the allow-list is refused (invalid_target)', 'invalid_target' in location, location)
+
+location = authorization('test', 'openid profile', resource='https://mail.example.com')
+check('a client without an allow-list is refused a resource (invalid_target)', 'invalid_target' in location, location)
+
 sys.exit(summary())
