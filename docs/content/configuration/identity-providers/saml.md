@@ -191,5 +191,7 @@ The user attributes released to the service provider, with their names as the SA
   minute, 100 in ten minutes, and 300 an hour by default); other requests, such as those of logged in users, don't
   count.
 - Assertions don't state the user's IP address.
+- A signed request of the HTTP-Redirect binding, together with the cookies, can exceed the default read buffer of 4 KB
+  and get `431 Request Header Fields Too Large`; raise `server.buffers.read` (for example to 16 KB).
 - A pending request is kept in the storage database for 15 minutes while the user logs in, and can be resumed once.
 - Disabled and deleted users get no assertion, even with a live session.

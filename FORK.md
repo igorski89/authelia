@@ -35,7 +35,8 @@ Decided by igor on 2026-11-23. They replace the earlier "thin seams" approach.
    - **Cutover freeze (agreed with sgnl-01, 2026-11-24):** only announced fixes are released until M5, and upstream
      syncs wait until after it. The cutover ran on `v4.40.0-sgnl.10` (2026-11-24, live from about 10:00Z). It turned up
      one fix, released as `sgnl.11`: Stripe signs its requests but doesn't publish its signing certificate, so its
-     service provider needs `request_signature: 'ignore'`.
+     service provider needs `request_signature: 'ignore'`. M5 completed on `sgnl.11` (2026-11-24): every app and Stripe SSO
+     work on production, no rollback. The freeze is over; M6 (removing Keycloak) is SGNL's, from 2026-12-08.
 3. **Kept in sync with upstream `master`**: merged by hand from time to time (igor, 2026-11-23). Syncs will conflict
    more often than with a thin fork; that cost is accepted. When upstream ships an equivalent feature, we compare the
    two and switch to theirs if we're ready to merge into it.
