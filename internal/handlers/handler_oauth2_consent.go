@@ -668,7 +668,7 @@ func handleOAuth2ConsentGetSessionsAndClient(ctx *middlewares.AutheliaCtx, flowI
 		return userSession, details, nil, nil, true
 	}
 
-	if client, err = ctx.Providers.OpenIDConnect.GetRegisteredClient(ctx, consent.ClientID); err != nil {
+	if client, err = ctx.Providers.OpenIDConnect.GetResolvedClient(ctx, consent.ClientID); err != nil {
 		ctx.GetLogger().
 			WithError(err).
 			WithFields(map[string]any{logging.FieldFlowID: consent.ChallengeID.String(), logging.FieldUsername: userSession.Username, logging.FieldClientID: consent.ClientID, logging.FieldSessionID: consent.ID}).

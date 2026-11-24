@@ -135,6 +135,9 @@ type Provider interface {
 	// of the user, or only those of the given client when the client identifier isn't empty.
 	RevokeOAuth2SessionsByUsername(ctx context.Context, username, clientID string) (revoked int64, err error)
 
+	// RevokeOAuth2RefreshTokensByClientID revokes every refresh token issued to the client.
+	RevokeOAuth2RefreshTokensByClientID(ctx context.Context, clientID string) (revoked int64, err error)
+
 	// RevokeIdentityVerificationsByUsername revokes the identity verification links of the user which were not revoked
 	// yet, used or not, and its pending one-time codes, or only the identity verification links of the given action.
 	RevokeIdentityVerificationsByUsername(ctx context.Context, username, action string) (revoked int64, err error)

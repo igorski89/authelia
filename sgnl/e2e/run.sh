@@ -18,6 +18,14 @@ for name in saml sp; do
     -keyout "${dir}/${name}.key" -out "${dir}/${name}.crt" 2> /dev/null
 done
 go build -o "${dir}/samlsp" ./sgnl/e2e/samlsp
+# A test CA Authelia trusts, and the certificate of the Client ID Metadata Document server on localhost.
+mkdir -p "${dir}/certs"
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=e2e test CA" -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign" -keyout "${dir}/ca.key" -out "${dir}/certs/ca.crt" 2> /dev/null
+openssl req -newkey rsa:2048 -nodes -subj "/CN=localhost" -keyout "${dir}/docs.key" -out "${dir}/docs.csr" 2> /dev/null
+printf 'subjectAltName=DNS:localhost,IP:127.0.0.1\nextendedKeyUsage=serverAuth\n' > "${dir}/docs.ext"
+openssl x509 -req -in "${dir}/docs.csr" -CA "${dir}/certs/ca.crt" -CAkey "${dir}/ca.key" -CAcreateserial -days 1 \
+  -extfile "${dir}/docs.ext" -out "${dir}/docs.crt" 2> /dev/null
 sed "s|\${DIR}|${dir}|g" "${here}/configuration.yml.tmpl" > "${dir}/configuration.yml"
 
 export X_AUTHELIA_CONFIG_FILTERS=template PYTHONDONTWRITEBYTECODE=1 E2E_DIR="${dir}"

@@ -147,6 +147,9 @@ type Config struct {
 	// parameter.
 	AccessTokenURIQueryParameterEnabled bool
 
+	// ClientIDMetadataDocuments is the Client ID Metadata Document support, nil when it's not enabled.
+	ClientIDMetadataDocuments *ClientIDMetadataDocuments
+
 	// DisableSpecialUseAddressGuard permits fetches of client supplied locations to connect to special-use addresses.
 	DisableSpecialUseAddressGuard bool
 

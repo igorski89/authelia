@@ -50,7 +50,7 @@ func OAuth2PushedAuthorizationRequest(ctx *middlewares.AutheliaCtx, rw http.Resp
 
 	clientID := requester.GetClient().GetID()
 
-	if client, err = ctx.Providers.OpenIDConnect.GetRegisteredClient(ctx, clientID); err != nil {
+	if client, err = ctx.Providers.OpenIDConnect.GetResolvedClient(ctx, clientID); err != nil {
 		if errors.Is(err, oauthelia2.ErrNotFound) {
 			ctx.GetLogger().Errorf("Pushed Authorization Request with id '%s' on client with id '%s' could not be processed: client was not found", requester.GetID(), clientID)
 		} else {

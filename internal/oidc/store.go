@@ -60,6 +60,8 @@ func NewMemoryClientStore(config *schema.Configuration) (store *MemoryClientStor
 		store.clients[client.ID] = NewClient(client, config.IdentityProviders.OIDC, policies)
 	}
 
+	store.policies = policies
+
 	return store
 }
 
@@ -141,7 +143,27 @@ func (s *Store) Rollback(ctx context.Context) (err error) {
 // GetClient loads the client by its ID or returns an error if the client does not exist or another error occurred.
 // This implements a portion of oauthelia2.ClientManager.
 func (s *Store) GetClient(ctx context.Context, id string) (client oauthelia2.Client, err error) {
-	return s.GetRegisteredClient(ctx, id)
+	if client, err = s.GetRegisteredClient(ctx, id); err != nil {
+		// The library only resolves a Client ID Metadata Document for a client the store doesn't know.
+		return nil, oauthelia2.ErrInvalidClient.WithDebugf("Client with id '%s' does not appear to be a registered client.", id).WithWrap(oauthelia2.ErrNotFound)
+	}
+
+	return client, nil
+}
+
+// resolvingStore is the Store a stored session's client is rebuilt with: a registered client, or the client of a
+// Client ID Metadata Document resolved again.
+type resolvingStore struct {
+	*Store
+}
+
+// GetClient returns the registered client with the id, or the client of its Client ID Metadata Document.
+func (s resolvingStore) GetClient(ctx context.Context, id string) (client oauthelia2.Client, err error) {
+	if s.config == nil {
+		return s.Store.GetClient(ctx, id)
+	}
+
+	return oauthelia2.GetClient(ctx, s.config, s.Store, id)
 }
 
 // ClientAssertionJWTValid returns an error if the JTI is known for the client or the DB check failed and nil if the
@@ -496,7 +518,7 @@ func (s *Store) toDeviceCodeRequest(ctx context.Context, data *model.OAuth2Devic
 		session = NewSession()
 	}
 
-	if request, err = data.ToRequest(ctx, session, s); err != nil {
+	if request, err = data.ToRequest(ctx, session, resolvingStore{s}); err != nil {
 		return nil, err
 	}
 
@@ -584,7 +606,7 @@ func (s *Store) loadRequesterBySignature(ctx context.Context, sessionType storag
 		}
 	}
 
-	if r, err = sessionModel.ToRequest(ctx, session, s); err != nil {
+	if r, err = sessionModel.ToRequest(ctx, session, resolvingStore{s}); err != nil {
 		return nil, err
 	}
 

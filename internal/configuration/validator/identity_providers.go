@@ -86,6 +86,7 @@ func validateOIDC(ctx *ValidateCtx, config *schema.Configuration, validator *sch
 		validator.Push(errors.New(errFmtOIDCProviderNoClientsConfigured))
 	} else {
 		validateOIDCClients(ctx, config.IdentityProviders.OIDC, validator)
+		validateOIDCClientIDMetadataDocuments(ctx, config.IdentityProviders.OIDC, validator)
 	}
 }
 

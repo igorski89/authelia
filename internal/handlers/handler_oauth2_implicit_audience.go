@@ -39,7 +39,7 @@ func handleOAuth2ImplicitAudienceWithResource(ctx *middlewares.AutheliaCtx, r *h
 		}
 	}
 
-	client, err := ctx.Providers.OpenIDConnect.GetRegisteredClient(ctx, id)
+	client, err := ctx.Providers.OpenIDConnect.GetResolvedClient(ctx, id)
 	if err != nil || client == nil || !client.GetImplicitAudienceWithResource() {
 		return
 	}

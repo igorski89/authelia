@@ -44,6 +44,10 @@ type Store struct {
 	ClientStore
 
 	provider storage.Provider
+
+	// config is the provider configuration, which a stored session's client is resolved with: a client of a Client ID
+	// Metadata Document is resolved again when its session is used.
+	config any
 }
 
 // ClientStore is an abstraction used for the Store struct which stores clients.
@@ -54,7 +58,13 @@ type ClientStore interface {
 
 // MemoryClientStore is an implementation of the ClientStore which just stores the clients in memory.
 type MemoryClientStore struct {
-	clients map[string]Client
+	clients  map[string]Client
+	policies map[string]ClientAuthorizationPolicy
+}
+
+// GetAuthorizationPolicies returns the authorization policies of the clients.
+func (s *MemoryClientStore) GetAuthorizationPolicies() (policies map[string]ClientAuthorizationPolicy) {
+	return s.policies
 }
 
 // TokenExchangePolicy describes a registered client permitted to perform a Token Exchange using tokens issued to
@@ -332,6 +342,13 @@ type ConsentGetResponseBody struct {
 	Claims            []string `json:"claims"`
 	EssentialClaims   []string `json:"essential_claims"`
 	RequireLogin      bool     `json:"require_login"`
+
+	// MetadataDocumentHost is the host of a client identified by its Client ID Metadata Document, which isn't a
+	// registered client.
+	MetadataDocumentHost string `json:"metadata_document_host,omitempty"`
+
+	// Loopback is true when the client returns to the user's computer (a loopback redirect URI).
+	Loopback bool `json:"loopback,omitempty"`
 }
 
 // ConsentPostRequestBody schema of the request body of the consent POST endpoint.

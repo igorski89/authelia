@@ -74,7 +74,7 @@ func OAuth2AuthorizationGET(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter
 
 	ctx.GetLogger().Debugf("Authorization Request with id '%s' on client with id '%s' is being processed", requester.GetID(), clientID)
 
-	if client, err = ctx.Providers.OpenIDConnect.GetRegisteredClient(ctx, clientID); err != nil {
+	if client, err = ctx.Providers.OpenIDConnect.GetResolvedClient(ctx, clientID); err != nil {
 		if errors.Is(err, oauthelia2.ErrNotFound) || errors.Is(err, oauthelia2.ErrInvalidClient) {
 			ctx.GetLogger().Errorf("Authorization Request with id '%s' on client with id '%s' could not be processed: client was not found", requester.GetID(), clientID)
 		} else {

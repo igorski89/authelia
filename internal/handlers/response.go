@@ -315,7 +315,7 @@ func resolveFlowResponseOpenIDConnectNoSubflow(ctx *middlewares.AutheliaCtx, use
 		return newFlowResponseFailure(messageAuthenticationFailed)
 	}
 
-	if client, err = ctx.Providers.OpenIDConnect.GetRegisteredClient(ctx, consent.ClientID); err != nil {
+	if client, err = ctx.Providers.OpenIDConnect.GetResolvedClient(ctx, consent.ClientID); err != nil {
 		ctx.GetLogger().
 			WithError(err).
 			WithFields(map[string]any{logging.FieldFlowID: flowID.String(), logging.FieldFlow: flowNameOpenIDConnect, logging.FieldSubflow: subflow, logging.FieldClientID: consent.ClientID}).

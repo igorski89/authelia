@@ -5,6 +5,7 @@
 package oidc
 
 import (
+	"crypto/x509"
 	"net/http"
 
 	oauthelia2 "authelia.com/provider/oauth2"
@@ -28,6 +29,8 @@ func NewOpenIDConnectProvider(config *schema.Configuration, store storage.Provid
 		Config: NewConfig(config.IdentityProviders.OIDC, issuer, templates),
 	}
 
+	provider.config = provider.Config
+
 	provider.Provider = oauthelia2.New(provider.Store, provider.Config)
 
 	provider.LoadHandlers(provider.Store)
@@ -43,4 +46,22 @@ func (p *OpenIDConnectProvider) WriteDynamicAuthorizeError(ctx Context, rw http.
 	case oauthelia2.AuthorizeRequester:
 		p.WriteAuthorizeError(ctx, rw, r, err)
 	}
+}
+
+// EnableClientIDMetadataDocuments configures the Client ID Metadata Document support when it's enabled. The trusted
+// certificates are those Authelia trusts, which the documents are fetched with.
+func (p *OpenIDConnectProvider) EnableClientIDMetadataDocuments(config *schema.Configuration, store storage.Provider, trusted *x509.CertPool) (err error) {
+	if p == nil || config == nil || config.IdentityProviders.OIDC == nil {
+		return nil
+	}
+
+	var policies map[string]ClientAuthorizationPolicy
+
+	if memory, ok := p.ClientStore.(*MemoryClientStore); ok {
+		policies = memory.GetAuthorizationPolicies()
+	}
+
+	p.ClientIDMetadataDocuments, err = NewClientIDMetadataDocuments(config.IdentityProviders.OIDC, p.Config, store, policies, trusted)
+
+	return err
 }

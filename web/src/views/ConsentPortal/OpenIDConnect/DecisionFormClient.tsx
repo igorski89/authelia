@@ -8,9 +8,11 @@ import { useTranslation } from "react-i18next";
 export interface Props {
     client_id: string;
     client_description: string;
+    metadata_document_host?: string;
+    loopback?: boolean;
 }
 
-function DecisionFormClient({ client_description, client_id }: Props) {
+function DecisionFormClient({ client_description, client_id, loopback, metadata_document_host }: Props) {
     const { t: translate } = useTranslation(["consent"]);
 
     const named = client_description !== "";
@@ -35,6 +37,26 @@ function DecisionFormClient({ client_description, client_id }: Props) {
                         title={translate("Client ID", { client_id }) || `Client ID: ${client_id}`}
                     >
                         {client_id}
+                    </span>
+                ) : null}
+                {metadata_document_host ? (
+                    <span
+                        id={"openid-consent-client-metadata-document-host"}
+                        data-testid={"openid-consent-client-metadata-document-host"}
+                        className="block text-xs text-amber-700 dark:text-amber-400"
+                    >
+                        {translate("Not a pre-registered app, identified by {{host}}", {
+                            host: metadata_document_host,
+                        })}
+                    </span>
+                ) : null}
+                {metadata_document_host && loopback ? (
+                    <span
+                        id={"openid-consent-client-loopback"}
+                        data-testid={"openid-consent-client-loopback"}
+                        className="block text-xs text-amber-700 dark:text-amber-400"
+                    >
+                        {translate("This app returns to your own computer")}
                     </span>
                 ) : null}
             </span>

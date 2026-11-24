@@ -93,6 +93,8 @@ type IdentityProvidersOpenIDConnect struct {
 	DefaultClaimsPolicy   string                                                `koanf:"default_claims_policy" yaml:"default_claims_policy,omitempty" toml:"default_claims_policy,omitempty" json:"default_claims_policy,omitempty" jsonschema:"title=Default Claims Policy" jsonschema_description:"The name of the claims policy applied to every client which doesn't configure its own."`
 	Scopes                map[string]IdentityProvidersOpenIDConnectScope        `koanf:"scopes" yaml:"scopes,omitempty" toml:"scopes,omitempty" json:"scopes,omitempty" jsonschema:"title=Scopes" jsonschema_description:"List of custom scopes."`
 
+	ClientIDMetadataDocuments IdentityProvidersOpenIDConnectClientIDMetadataDocuments `koanf:"client_id_metadata_documents" yaml:"client_id_metadata_documents,omitempty" toml:"client_id_metadata_documents,omitempty" json:"client_id_metadata_documents,omitempty" jsonschema:"title=Client ID Metadata Documents" jsonschema_description:"Clients identified by the URL of their Client ID Metadata Document, from the hosts of the rules only."`
+
 	TokenExchange IdentityProvidersOpenIDConnectTokenExchange `koanf:"token_exchange" yaml:"token_exchange,omitempty" toml:"token_exchange,omitempty" json:"token_exchange,omitempty" jsonschema:"title=Token Exchange" jsonschema_description:"Token Exchange configuration."`
 
 	Discovery IdentityProvidersOpenIDConnectDiscovery `yaml:"-" toml:"-" json:"-"` // MetaData value. Not configurable by users.
@@ -215,6 +217,44 @@ type IdentityProvidersOpenIDConnectLifespanToken struct {
 type IdentityProvidersOpenIDConnectTokenExchange struct {
 	TokenTypes                []string `koanf:"token_types" yaml:"token_types,omitempty" toml:"token_types,omitempty" json:"token_types,omitempty" jsonschema:"enum=urn:ietf:params:oauth:token-type:access_token,uniqueItems,title=Token Types" jsonschema_description:"The token types the Token Exchange grant is enabled for."`
 	DefaultRequestedTokenType string   `koanf:"default_requested_token_type" yaml:"default_requested_token_type,omitempty" toml:"default_requested_token_type,omitempty" json:"default_requested_token_type,omitempty" jsonschema:"default=urn:ietf:params:oauth:token-type:access_token,enum=urn:ietf:params:oauth:token-type:access_token,title=Default Requested Token Type" jsonschema_description:"The token type issued when a Token Exchange request omits the 'requested_token_type' parameter."`
+}
+
+// IdentityProvidersOpenIDConnectClientIDMetadataDocuments configures clients identified by the URL of their Client ID
+// Metadata Document (draft-ietf-oauth-client-id-metadata-document). Only hosts with a rule are resolved, and the rule
+// grants what the document can't: the authorization policy, consent, audience and token exchange.
+type IdentityProvidersOpenIDConnectClientIDMetadataDocuments struct {
+	Enabled bool `koanf:"enabled" yaml:"enabled" toml:"enabled" json:"enabled" jsonschema:"default=false,title=Enabled" jsonschema_description:"Resolves clients from their Client ID Metadata Documents."`
+
+	Rules []IdentityProvidersOpenIDConnectClientIDMetadataDocumentRule `koanf:"rules" yaml:"rules,omitempty" toml:"rules,omitempty" json:"rules,omitempty" jsonschema:"title=Rules" jsonschema_description:"The hosts whose documents are resolved, and what their clients may do."`
+
+	FetchTimeout        time.Duration `koanf:"fetch_timeout" yaml:"fetch_timeout,omitempty" toml:"fetch_timeout,omitempty" json:"fetch_timeout,omitempty" jsonschema:"default=5 seconds,title=Fetch Timeout" jsonschema_description:"How long fetching a document may take."`
+	MaxDocumentBytes    int           `koanf:"max_document_bytes" yaml:"max_document_bytes,omitempty" toml:"max_document_bytes,omitempty" json:"max_document_bytes,omitempty" jsonschema:"default=5120,title=Maximum Document Bytes" jsonschema_description:"The largest document accepted."`
+	CacheLifespan       time.Duration `koanf:"cache_lifespan" yaml:"cache_lifespan,omitempty" toml:"cache_lifespan,omitempty" json:"cache_lifespan,omitempty" jsonschema:"default=1 hour,title=Cache Lifespan" jsonschema_description:"How long a document served without cache headers is cached."`
+	MaxCacheLifespan    time.Duration `koanf:"max_cache_lifespan" yaml:"max_cache_lifespan,omitempty" toml:"max_cache_lifespan,omitempty" json:"max_cache_lifespan,omitempty" jsonschema:"default=24 hours,title=Maximum Cache Lifespan" jsonschema_description:"How long a document is cached at most, whatever its cache headers say."`
+	MaxDocumentsPerHost int           `koanf:"max_documents_per_host" yaml:"max_documents_per_host,omitempty" toml:"max_documents_per_host,omitempty" json:"max_documents_per_host,omitempty" jsonschema:"default=20,title=Maximum Documents per Host" jsonschema_description:"How many distinct documents one registrable domain may have cached."`
+}
+
+// IdentityProvidersOpenIDConnectClientIDMetadataDocumentRule is the policy for the documents of one host.
+type IdentityProvidersOpenIDConnectClientIDMetadataDocumentRule struct {
+	Domain string `koanf:"domain" yaml:"domain,omitempty" toml:"domain,omitempty" json:"domain,omitempty" jsonschema:"title=Domain" jsonschema_description:"The host of the client identifiers, matched exactly, or with a leading dot its subdomains only."`
+
+	AuthorizationPolicy          string         `koanf:"authorization_policy" yaml:"authorization_policy,omitempty" toml:"authorization_policy,omitempty" json:"authorization_policy,omitempty" jsonschema:"title=Authorization Policy" jsonschema_description:"The authorization policy of the clients."`
+	ConsentMode                  string         `koanf:"consent_mode" yaml:"consent_mode,omitempty" toml:"consent_mode,omitempty" json:"consent_mode,omitempty" jsonschema:"enum=auto,enum=explicit,enum=pre-configured,title=Consent Mode" jsonschema_description:"The consent mode of the clients; never implicit."`
+	ConsentPreConfiguredDuration *time.Duration `koanf:"pre_configured_consent_duration" yaml:"pre_configured_consent_duration,omitempty" toml:"pre_configured_consent_duration,omitempty" json:"pre_configured_consent_duration,omitempty" jsonschema:"title=Pre-Configured Consent Duration" jsonschema_description:"How long a pre-configured consent lasts."`
+	Scopes                       []string       `koanf:"scopes" yaml:"scopes,omitempty" toml:"scopes,omitempty" json:"scopes,omitempty" jsonschema:"title=Scopes" jsonschema_description:"The scopes the clients may have; a document's scope is reduced to them."`
+	Audience                     []string       `koanf:"audience" yaml:"audience,omitempty" toml:"audience,omitempty" json:"audience,omitempty" jsonschema:"title=Audience" jsonschema_description:"The audience of the clients' tokens, registered client IDs only."`
+	Resource                     []string       `koanf:"resource" yaml:"resource,omitempty" toml:"resource,omitempty" json:"resource,omitempty" jsonschema:"title=Resource" jsonschema_description:"The resource indicators (RFC 8707) the clients may request, such as the URL of an MCP gateway."`
+	RequestedAudienceMode        string         `koanf:"requested_audience_mode" yaml:"requested_audience_mode,omitempty" toml:"requested_audience_mode,omitempty" json:"requested_audience_mode,omitempty" jsonschema:"enum=explicit,enum=implicit,title=Requested Audience Mode" jsonschema_description:"The requested audience mode of the clients."`
+	SubjectTokenClientsSupported []string       `koanf:"subject_token_clients_supported" yaml:"subject_token_clients_supported,omitempty" toml:"subject_token_clients_supported,omitempty" json:"subject_token_clients_supported,omitempty" jsonschema:"title=Subject Token Clients Supported" jsonschema_description:"The registered clients which may exchange the tokens of the clients."`
+	ClaimsPolicy                 string         `koanf:"claims_policy" yaml:"claims_policy,omitempty" toml:"claims_policy,omitempty" json:"claims_policy,omitempty" jsonschema:"title=Claims Policy" jsonschema_description:"The claims policy of the clients."`
+	Lifespan                     string         `koanf:"lifespan" yaml:"lifespan,omitempty" toml:"lifespan,omitempty" json:"lifespan,omitempty" jsonschema:"title=Lifespan" jsonschema_description:"The custom lifespan of the clients."`
+	AccessTokenSignedResponseAlg string         `koanf:"access_token_signed_response_alg" yaml:"access_token_signed_response_alg,omitempty" toml:"access_token_signed_response_alg,omitempty" json:"access_token_signed_response_alg,omitempty" jsonschema:"title=Access Token Signed Response Algorithm" jsonschema_description:"The signing algorithm of the clients' access tokens."`
+	ImplicitAudienceWithResource bool           `koanf:"implicit_audience_with_resource" yaml:"implicit_audience_with_resource" toml:"implicit_audience_with_resource" json:"implicit_audience_with_resource" jsonschema:"default=false,title=Implicit Audience With Resource" jsonschema_description:"Adds the audience to an authorization request which names a resource but no audience."`
+	AllowLoopbackRedirectURIs    bool           `koanf:"allow_loopback_redirect_uris" yaml:"allow_loopback_redirect_uris" toml:"allow_loopback_redirect_uris" json:"allow_loopback_redirect_uris" jsonschema:"default=false,title=Allow Loopback Redirect URIs" jsonschema_description:"Accepts documents with loopback redirect URIs, which any process on the user's computer can receive."`
+
+	// Client is the client every document of the rule starts from, validated like a registered client. Not
+	// configurable by users.
+	Client IdentityProvidersOpenIDConnectClient `koanf:"-" yaml:"-" toml:"-" json:"-"`
 }
 
 // IdentityProvidersOpenIDConnectCORS represents an OpenID Connect 1.0 CORS config.

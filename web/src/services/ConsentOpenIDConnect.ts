@@ -34,6 +34,8 @@ export interface ConsentGetResponseBody {
     claims: null | string[];
     essential_claims: null | string[];
     require_login: boolean;
+    metadata_document_host?: string;
+    loopback?: boolean;
 }
 
 export function getConsentResponse(flowID?: string, userCode?: string) {

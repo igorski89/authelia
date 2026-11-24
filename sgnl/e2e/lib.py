@@ -34,11 +34,12 @@ def summary():
 class Client:
     """An HTTP client with a cookie jar, talking to the instance on 127.0.0.1:9091 through the realm path."""
 
-    def __init__(self):
+    def __init__(self, port=9091):
         self.cookies = {}
+        self.port = port
 
     def req(self, method, path, body=None, headers=None, form=False):
-        conn = http.client.HTTPConnection('127.0.0.1', 9091)
+        conn = http.client.HTTPConnection('127.0.0.1', self.port)
         h = dict(HEADERS)
         h.update(headers or {})
 
