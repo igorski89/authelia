@@ -472,6 +472,11 @@ func (p *SQLProvider) checkAuthenticationUserUpdated(ctx context.Context, result
 	var signature string
 
 	if err = p.conn(ctx).GetContext(ctx, &signature, p.db.Rebind(fmt.Sprintf(queryFmtSelectAuthenticationUserSignatureByID, tableAuthenticationUsers)), user.ID); err != nil {
+		// The user was deleted since it was read.
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("error updating authentication user '%s': %w", user.Username, ErrNoAuthenticationUser)
+		}
+
 		return fmt.Errorf("error updating authentication user '%s': %w", user.Username, err)
 	}
 

@@ -438,7 +438,15 @@ func TestSQLProviderAuthenticationUserConcurrentChange(t *testing.T) {
 	})
 	assert.ErrorIs(t, err, ErrAuthenticationUserChanged)
 
-	// An update without a concurrent change, also one which writes the same values, is made.
+	// A user deleted between the read and the write is not found.
+	err = provider.updateAuthenticationUser(ctx, "raced", func(ctx context.Context, user *model.AuthenticationUser) error {
+		_, err := provider.conn(ctx).ExecContext(ctx, "DELETE FROM authentication_users WHERE id = ?", user.ID)
+
+		return err
+	})
+	assert.ErrorIs(t, err, ErrNoAuthenticationUser)
+
+		// An update without a concurrent change, also one which writes the same values, is made.
 	require.NoError(t, provider.UpdateAuthenticationUserDisabled(ctx, "raced", true))
 	require.NoError(t, provider.UpdateAuthenticationUserDisabled(ctx, "raced", true))
 }
