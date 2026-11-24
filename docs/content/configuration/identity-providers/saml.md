@@ -173,6 +173,12 @@ The user attributes released to the service provider, with their names as the SA
 ## Notes
 
 - Only service provider initiated single sign-on is supported. Responses aren't encrypted.
-- A request with `ForceAuthn` is answered with an `AuthnFailed` status, as the user can't be asked to log in again.
+- A request with `ForceAuthn` ends the user's portal session and asks the user to log in again; it is answered for a
+  login made after the request.
+- A requested authentication context is only refused when the session is weaker than every requested class.
+- The `SAMLRequest` may be at most 16 KB and the `RelayState` 1 KB, and the single sign-on endpoints are rate limited
+  by client address with `server.endpoints.rate_limits.saml_single_sign_on` (30 requests a minute, 100 in ten minutes,
+  and 300 an hour by default).
+- Assertions don't state the user's IP address.
 - A pending request is kept in the storage database for 15 minutes while the user logs in, and can be resumed once.
 - Disabled and deleted users get no assertion, even with a live session.

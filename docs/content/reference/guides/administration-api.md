@@ -71,6 +71,10 @@ curl -s -H "Authorization: Bearer $TOKEN" https://auth.example.com/api/admin/use
 | `GET /api/admin/audit`                                    | r       | Changes, newest first, with the actor                      |
 | `GET /api/admin/events`                                   | r       | Authentication attempts, newest first                      |
 
+`PATCH /api/admin/users/{username}` must change at least one field. It answers with the changed user when the token
+was also granted `authelia.admin.read`, and with `204 No Content` otherwise. The token's audience must be the issuer
+followed by `/api/admin` exactly.
+
 Errors are JSON objects with `error` set to `invalid_request` (400), `not_found` (404), `conflict` (409), or
 `server_error` (500). Every change is recorded in the audit with the client as the actor.
 
