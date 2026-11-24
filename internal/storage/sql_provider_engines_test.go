@@ -162,11 +162,12 @@ func testEngineUserRevocations(t *testing.T, provider Provider) {
 
 	require.NoError(t, provider.SaveUserRevocation(ctx, username, "", at.Add(-time.Hour)))
 	require.NoError(t, provider.SaveUserRevocation(ctx, username, "", at))
+	require.NoError(t, provider.SaveUserRevocation(ctx, username, "", at.Add(-time.Minute)))
 	require.NoError(t, provider.SaveUserRevocation(ctx, username, "app", at))
 
 	revocations, err := provider.LoadUserRevocations(ctx, username)
 	require.NoError(t, err)
-	require.Len(t, revocations, 2, "a later mark replaces an earlier one")
+	require.Len(t, revocations, 2, "one mark per user and client, which keeps the later time")
 
 	for _, revocation := range revocations {
 		assert.True(t, revocation.RevokedAt.Equal(at), revocation.RevokedAt)

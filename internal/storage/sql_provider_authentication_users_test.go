@@ -442,3 +442,19 @@ func TestSQLProviderAuthenticationUserConcurrentChange(t *testing.T) {
 	require.NoError(t, provider.UpdateAuthenticationUserDisabled(ctx, "raced", true))
 	require.NoError(t, provider.UpdateAuthenticationUserDisabled(ctx, "raced", true))
 }
+
+func TestSQLProviderUserRevocationsKeepTheLaterTime(t *testing.T) {
+	provider := newTestSQLiteProvider(t)
+	require.NoError(t, provider.StartupCheck())
+
+	ctx := context.Background()
+	at := time.Date(2026, 11, 24, 12, 0, 0, 123_000_000, time.UTC)
+
+	require.NoError(t, provider.SaveUserRevocation(ctx, "john", "", at))
+	require.NoError(t, provider.SaveUserRevocation(ctx, "john", "", at.Add(-time.Hour)))
+
+	revocations, err := provider.LoadUserRevocations(ctx, "john")
+	require.NoError(t, err)
+	require.Len(t, revocations, 1)
+	assert.True(t, revocations[0].RevokedAt.Equal(at), revocations[0].RevokedAt)
+}

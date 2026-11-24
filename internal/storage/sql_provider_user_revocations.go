@@ -15,13 +15,24 @@ import (
 const tableUserRevocations = "user_revocations"
 
 const (
-	queryFmtDeleteUserRevocation = `
-		DELETE FROM %s
-		WHERE username = ? AND client_id = ?;`
-
-	queryFmtInsertUserRevocation = `
+	// The upserts keep the later of the existing and the new time, so overlapping revocations never move a mark back
+	// and concurrent first marks of a user don't fail on the unique index.
+	queryFmtUpsertUserRevocationSQLite = `
 		INSERT INTO %s (username, client_id, revoked_at)
-		VALUES (?, ?, ?);`
+		VALUES (?, ?, ?)
+			ON CONFLICT (username, client_id)
+			DO UPDATE SET revoked_at = MAX(revoked_at, excluded.revoked_at);`
+
+	queryFmtUpsertUserRevocationPostgreSQL = `
+		INSERT INTO %[1]s (username, client_id, revoked_at)
+		VALUES ($1, $2, $3)
+			ON CONFLICT (username, client_id)
+			DO UPDATE SET revoked_at = GREATEST(%[1]s.revoked_at, EXCLUDED.revoked_at);`
+
+	queryFmtUpsertUserRevocationMySQL = `
+		INSERT INTO %s (username, client_id, revoked_at)
+		VALUES (?, ?, ?)
+			ON DUPLICATE KEY UPDATE revoked_at = GREATEST(revoked_at, VALUES(revoked_at));`
 
 	queryFmtSelectUserRevocations = `
 		SELECT id, username, client_id, revoked_at
@@ -30,14 +41,19 @@ const (
 )
 
 // SaveUserRevocation marks the revocation of a user's sessions and tokens, of one client when clientID isn't empty.
-// A later mark replaces an earlier one.
+// The mark keeps the later time.
 func (p *SQLProvider) SaveUserRevocation(ctx context.Context, username, clientID string, revokedAt time.Time) (err error) {
-	if _, err = p.conn(ctx).ExecContext(ctx, p.db.Rebind(fmt.Sprintf(queryFmtDeleteUserRevocation, tableUserRevocations)), username, clientID); err != nil {
-		return fmt.Errorf("error deleting the revocation mark of user '%s': %w", username, err)
+	query := queryFmtUpsertUserRevocationSQLite
+
+	switch p.name {
+	case providerPostgres:
+		query = queryFmtUpsertUserRevocationPostgreSQL
+	case providerMySQL:
+		query = queryFmtUpsertUserRevocationMySQL
 	}
 
-	if _, err = p.conn(ctx).ExecContext(ctx, p.db.Rebind(fmt.Sprintf(queryFmtInsertUserRevocation, tableUserRevocations)), username, clientID, revokedAt.UTC()); err != nil {
-		return fmt.Errorf("error inserting the revocation mark of user '%s': %w", username, err)
+	if _, err = p.conn(ctx).ExecContext(ctx, fmt.Sprintf(query, tableUserRevocations), username, clientID, revokedAt.UTC()); err != nil {
+		return fmt.Errorf("error saving the revocation mark of user '%s': %w", username, err)
 	}
 
 	return nil
