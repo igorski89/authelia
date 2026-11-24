@@ -103,12 +103,13 @@ func oidcPolicyHasNetworks(config *schema.IdentityProvidersOpenIDConnect, name s
 }
 
 const (
-	errFmtOIDCClientTokenExchangeExcluded        = "identity_providers: oidc: clients: client '%s': option '%s' must not contain '%s' with the token exchange grant type"
-	errFmtOIDCClientTokenExchangeNetworks        = "identity_providers: oidc: clients: client '%s': option 'authorization_policy' of the client '%s' is '%s', which has rules with 'networks', which a token exchange can't evaluate as it sees the address of the client performing it"
-	errFmtOIDCClientTokenExchangeStrategy        = "identity_providers: oidc: clients: client '%s': option '%s' must be 'exact' with the token exchange grant type"
-	errFmtOIDCClientTokenExchangeTarget          = "identity_providers: oidc: clients: client '%s': options 'audience' and 'resource' must only contain registered client IDs with the token exchange grant type, but they contain '%s'"
-	errFmtOIDCClientImplicitAudienceWithResource = "identity_providers: oidc: clients: client '%s': option 'implicit_audience_with_resource' requires option 'audience'"
-	errFmtOIDCClientTokenExchangeImplicitConsent = "identity_providers: oidc: clients: client '%s': option 'consent_mode' must not be 'implicit' with option 'subject_token_clients_supported', as its consent screen is the only one the user sees for the token exchange"
+	errFmtOIDCClientTokenExchangeExcluded             = "identity_providers: oidc: clients: client '%s': option '%s' must not contain '%s' with the token exchange grant type"
+	errFmtOIDCClientTokenExchangeNetworks             = "identity_providers: oidc: clients: client '%s': option 'authorization_policy' of the client '%s' is '%s', which has rules with 'networks', which a token exchange can't evaluate as it sees the address of the client performing it"
+	errFmtOIDCClientTokenExchangeStrategy             = "identity_providers: oidc: clients: client '%s': option '%s' must be 'exact' with the token exchange grant type"
+	errFmtOIDCClientTokenExchangeTarget               = "identity_providers: oidc: clients: client '%s': options 'audience' and 'resource' must only contain registered client IDs with the token exchange grant type, but they contain '%s'"
+	errFmtOIDCClientImplicitAudienceWithResource      = "identity_providers: oidc: clients: client '%s': option 'implicit_audience_with_resource' requires option 'audience'"
+	errFmtOIDCClientImplicitAudienceWithResourceGrant = "identity_providers: oidc: clients: client '%s': option 'implicit_audience_with_resource' is only for clients with the grant types 'authorization_code' and 'refresh_token' but it has '%s'"
+	errFmtOIDCClientTokenExchangeImplicitConsent      = "identity_providers: oidc: clients: client '%s': option 'consent_mode' must not be 'implicit' with option 'subject_token_clients_supported', as its consent screen is the only one the user sees for the token exchange"
 )
 
 // validateOIDCClientImplicitAudienceWithResource requires an audience on a client which adds it to the requested
@@ -116,7 +117,19 @@ const (
 func validateOIDCClientImplicitAudienceWithResource(c int, config *schema.IdentityProvidersOpenIDConnect, validator *schema.StructValidator) {
 	client := &config.Clients[c]
 
-	if client.ImplicitAudienceWithResource && len(client.Audience) == 0 {
+	if !client.ImplicitAudienceWithResource {
+		return
+	}
+
+	if len(client.Audience) == 0 {
 		validator.Push(fmt.Errorf(errFmtOIDCClientImplicitAudienceWithResource, client.ID))
+	}
+
+	// On a client with another grant, such as an exchanging gateway whose audience is every app it may reach, a
+	// request naming one resource would get the whole configured audience.
+	for _, grant := range client.GrantTypes {
+		if grant != oidc.GrantTypeAuthorizationCode && grant != oidc.GrantTypeRefreshToken {
+			validator.Push(fmt.Errorf(errFmtOIDCClientImplicitAudienceWithResourceGrant, client.ID, grant))
+		}
 	}
 }

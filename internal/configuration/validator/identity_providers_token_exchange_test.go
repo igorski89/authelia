@@ -195,15 +195,18 @@ func TestValidateOIDCClientImplicitAudienceWithResource(t *testing.T) {
 	config := &schema.IdentityProvidersOpenIDConnect{
 		Clients: []schema.IdentityProvidersOpenIDConnectClient{
 			{ID: "without", ImplicitAudienceWithResource: true},
-			{ID: "with", ImplicitAudienceWithResource: true, Audience: []string{"gateway"}},
+			{ID: "with", ImplicitAudienceWithResource: true, Audience: []string{"gateway"}, GrantTypes: []string{oidc.GrantTypeAuthorizationCode, oidc.GrantTypeRefreshToken}},
+			{ID: "gateway", ImplicitAudienceWithResource: true, Audience: []string{"app"}, GrantTypes: []string{oidc.GrantTypeTokenExchange}},
 		},
 	}
 
 	validator := schema.NewStructValidator()
 
-	validateOIDCClientImplicitAudienceWithResource(0, config, validator)
-	validateOIDCClientImplicitAudienceWithResource(1, config, validator)
+	for c := range config.Clients {
+		validateOIDCClientImplicitAudienceWithResource(c, config, validator)
+	}
 
-	require.Len(t, validator.Errors(), 1)
+	require.Len(t, validator.Errors(), 2)
 	assert.EqualError(t, validator.Errors()[0], "identity_providers: oidc: clients: client 'without': option 'implicit_audience_with_resource' requires option 'audience'")
+	assert.EqualError(t, validator.Errors()[1], "identity_providers: oidc: clients: client 'gateway': option 'implicit_audience_with_resource' is only for clients with the grant types 'authorization_code' and 'refresh_token' but it has '"+oidc.GrantTypeTokenExchange+"'")
 }
