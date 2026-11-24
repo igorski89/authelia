@@ -37,6 +37,10 @@ Decided by igor on 2026-11-23. They replace the earlier "thin seams" approach.
      one fix, released as `sgnl.11`: Stripe signs its requests but doesn't publish its signing certificate, so its
      service provider needs `request_signature: 'ignore'`. M5 completed on `sgnl.11` (2026-11-24): every app and Stripe SSO
      work on production, no rollback. The freeze is over; M6 (removing Keycloak) is SGNL's, from 2026-12-08.
+     `sgnl.12` (2026-11-24, on production the same day; igor skipped the test instance) adds RFC 8693 token exchange for
+     the MCP gateway with the security reviews' fixes; no migration, rollback is pinning `sgnl.11`. Branch `sgnl-mcp` was
+     merged into `sgnl` (fast-forward), so `sgnl` is the production line again, and production changes follow the
+     freeze rules (reviews clean before tagging, announced to igor and sgnl-01).
 3. **Kept in sync with upstream `master`**: merged by hand from time to time (igor, 2026-11-23). Syncs will conflict
    more often than with a thin fork; that cost is accepted. When upstream ships an equivalent feature, we compare the
    two and switch to theirs if we're ready to merge into it.
