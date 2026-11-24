@@ -148,16 +148,8 @@ func sendAccountSetupMail(ctx *middlewares.AutheliaCtx, issuer *url.URL, invite 
 // password of the invited user. The user must still exist and be enabled. The identifier of the link is kept in the
 // session, so revoking the link (a new invite, or disabling the user) ends a setup which was not finished yet.
 func AccountSetupIdentityFinishPOST(ctx *middlewares.AutheliaCtx) {
-	var body middlewares.IdentityVerificationFinishBody
-
 	// The token is only read here to remember its identifier; the middleware verifies it before the setup starts.
-	if err := json.Unmarshal(ctx.PostBody(), &body); err == nil && body.Token != "" {
-		claims := jwt.RegisteredClaims{}
-
-		if _, _, err = jwt.NewParser().ParseUnverified(body.Token, &claims); err == nil {
-			ctx.SetUserValue(userValueKeyAccountSetupID, claims.ID)
-		}
-	}
+	ctx.SetUserValue(userValueKeyAccountSetupID, identityVerificationTokenID(ctx))
 
 	accountSetupIdentityFinishVerified(ctx)
 }
@@ -210,29 +202,63 @@ func accountSetupIdentityFinish(ctx *middlewares.AutheliaCtx, username string) {
 // accountSetupLinkValid checks again that the invite link the session redeemed belongs to the user, and was neither
 // revoked nor expired since.
 func accountSetupLinkValid(ctx *middlewares.AutheliaCtx, id, username string) bool {
+	return identityVerificationLinkValid(ctx, id, username, management.ActionAccountSetup)
+}
+
+// identityVerificationLinkValid checks again that the link a session redeemed is one for the action, belongs to the
+// user, and was neither revoked nor expired since it was opened.
+func identityVerificationLinkValid(ctx *middlewares.AutheliaCtx, id, username, action string) bool {
+	fields := map[string]any{"username": username, "action": action}
+
+	if id == "" {
+		ctx.GetLogger().WithFields(fields).Error("Error occurred checking the link the session redeemed: the session has no link identifier")
+
+		return false
+	}
+
 	verification, err := ctx.Providers.StorageProvider.LoadIdentityVerification(ctx, id)
 
 	switch {
 	case err != nil:
-		ctx.GetLogger().WithError(err).WithField("username", username).Error("Error occurred loading the invite link during account setup")
+		ctx.GetLogger().WithError(err).WithFields(fields).Error("Error occurred loading the link the session redeemed")
 
 		return false
-	case verification.Action != management.ActionAccountSetup, verification.Username != username:
-		ctx.GetLogger().WithField("username", username).Error("Error occurred during account setup: the invite link does not belong to the user")
+	case verification.Action != action, verification.Username != username:
+		ctx.GetLogger().WithFields(fields).Error("Error occurred checking the link the session redeemed: it does not belong to the user")
 
 		return false
 	case verification.RevokedAt.Valid:
-		ctx.GetLogger().WithField("username", username).Error("Error occurred during account setup: the invite link was revoked since it was opened")
+		ctx.GetLogger().WithFields(fields).Error("Error occurred checking the link the session redeemed: it was revoked since it was opened")
 
 		return false
 	case !ctx.GetClock().Now().Before(verification.ExpiresAt):
-		ctx.GetLogger().WithField("username", username).Error("Error occurred during account setup: the invite link expired since it was opened")
+		ctx.GetLogger().WithFields(fields).Error("Error occurred checking the link the session redeemed: it expired since it was opened")
 
 		return false
 	default:
 		return true
 	}
 }
+
+// identityVerificationTokenID returns the identifier of the link token in the request body, read without verifying
+// it: the identity verification middleware verifies the token before the identifier is used.
+func identityVerificationTokenID(ctx *middlewares.AutheliaCtx) string {
+	var body middlewares.IdentityVerificationFinishBody
+
+	if err := json.Unmarshal(ctx.PostBody(), &body); err != nil || body.Token == "" {
+		return ""
+	}
+
+	claims := jwt.RegisteredClaims{}
+
+	if _, _, err := jwt.NewParser().ParseUnverified(body.Token, &claims); err != nil {
+		return ""
+	}
+
+	return claims.ID
+}
+
+const userValueKeyIdentityVerificationID = "identity_verification_id"
 
 // AccountSetupPOST sets the password of the invited user whose link the session redeemed, then logs the user in with
 // an elevated session so the portal can register a passkey right away: the link proved control of the email, which is

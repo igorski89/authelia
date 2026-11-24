@@ -174,6 +174,13 @@ func ResetPasswordPOST(ctx *middlewares.AutheliaCtx) {
 
 	username := *userSession.PasswordResetUsername
 
+	// The link may have been revoked or expired since it was opened, for example by a logout or by disabling the user.
+	if !identityVerificationLinkValid(ctx, userSession.PasswordResetID, username, ActionResetPassword) {
+		ctx.SetJSONError(messageUnableToResetPassword)
+
+		return
+	}
+
 	var requestBody resetPasswordStep2RequestBody
 
 	if err = ctx.ParseBody(&requestBody); err != nil {
@@ -211,6 +218,7 @@ func ResetPasswordPOST(ctx *middlewares.AutheliaCtx) {
 	ctx.GetLogger().Debugf("Password of user %s has been reset", username)
 
 	userSession.PasswordResetUsername = nil
+	userSession.PasswordResetID = ""
 
 	if err = ctx.SaveSession(&userSession); err != nil {
 		ctx.GetLogger().WithError(err).Error("Error occurred saving the session while updating the password reset state")
@@ -276,8 +284,10 @@ func identityRetrieverFromStorage(ctx *middlewares.AutheliaCtx) (*session.Identi
 		return nil, fmt.Errorf("user %s has no email address configured", requestBody.Username)
 	}
 
+	// The username the backend resolved, not the one typed, which may be the email or differ in case: the link and its
+	// revocation are keyed by it.
 	return &session.Identity{
-		Username:    requestBody.Username,
+		Username:    details.Username,
 		DisplayName: details.DisplayName,
 		Email:       details.Emails[0],
 	}, nil
@@ -310,12 +320,20 @@ func resetPasswordIdentityVerificationFinish(ctx *middlewares.AutheliaCtx, usern
 	}
 
 	userSession.PasswordResetUsername = &username
+	userSession.PasswordResetID, _ = ctx.UserValue(userValueKeyIdentityVerificationID).(string)
 
 	if err = ctx.SaveSession(&userSession); err != nil {
 		ctx.GetLogger().WithError(err).Errorf("Unable to enable password reset in session for user '%s'", userSession.Username)
 	}
 }
 
-// ResetPasswordIdentityFinish the handler for finishing the identity validation.
-var ResetPasswordIdentityFinish = middlewares.IdentityVerificationFinish(
+// ResetPasswordIdentityFinish the handler for finishing the identity validation. It remembers the identifier of the
+// link, which the middleware verifies, so the password step can check that it wasn't revoked since.
+func ResetPasswordIdentityFinish(ctx *middlewares.AutheliaCtx) {
+	ctx.SetUserValue(userValueKeyIdentityVerificationID, identityVerificationTokenID(ctx))
+
+	resetPasswordIdentityFinishVerified(ctx)
+}
+
+var resetPasswordIdentityFinishVerified = middlewares.IdentityVerificationFinish(
 	middlewares.IdentityVerificationFinishArgs{ActionClaim: ActionResetPassword}, resetPasswordIdentityVerificationFinish)

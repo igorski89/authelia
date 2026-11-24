@@ -52,6 +52,10 @@ type UserSession struct {
 	// PasswordResetUsername is given a value when a session exists where the password is being reset.
 	PasswordResetUsername *string `msg:"pru,omitempty"`
 
+	// PasswordResetID is the identifier of the reset link the session redeemed, which is checked again when the password
+	// is set, so a link revoked since (by a logout or a disable) can't be finished.
+	PasswordResetID string `msg:"pri,omitempty"`
+
 	// AccountSetupUsername is given a value when a session exists where an invited user is setting up their account
 	// with a redeemed invite link.
 	AccountSetupUsername *string `msg:"asu,omitempty"`

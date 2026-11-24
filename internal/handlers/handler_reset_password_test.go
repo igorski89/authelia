@@ -787,6 +787,54 @@ func setTestPasswordResetUsername(t *testing.T, mock *mocks.MockAutheliaCtx) {
 	username := testUsername
 
 	us.PasswordResetUsername = &username
+	us.PasswordResetID = testPasswordResetID
 
 	require.NoError(t, mock.Ctx.SaveSession(&us))
+
+	// The link the session redeemed is checked again before the password is set.
+	mock.StorageMock.EXPECT().
+		LoadIdentityVerification(gomock.Any(), testPasswordResetID).
+		Return(&model.IdentityVerification{Action: ActionResetPassword, Username: testUsername, ExpiresAt: time.Now().Add(time.Hour)}, nil).
+		AnyTimes()
+}
+
+const testPasswordResetID = "a-reset-link-id" //nolint:gosec // The identifier of a test link, not a credential.
+
+func TestResetPasswordPOSTShouldRefuseRevokedOrUnknownLinks(t *testing.T) {
+	testCases := []struct {
+		name         string
+		id           string
+		verification *model.IdentityVerification
+	}{
+		{"ShouldRefuseRevokedLink", testPasswordResetID, &model.IdentityVerification{Action: ActionResetPassword, Username: testUsername, ExpiresAt: time.Now().Add(time.Hour), RevokedAt: sql.NullTime{Time: time.Now(), Valid: true}}},
+		{"ShouldRefuseExpiredLink", testPasswordResetID, &model.IdentityVerification{Action: ActionResetPassword, Username: testUsername, ExpiresAt: time.Now().Add(-time.Minute)}},
+		{"ShouldRefuseSessionWithoutLink", "", nil},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := mocks.NewMockAutheliaCtx(t)
+			defer mock.Close()
+
+			us, err := mock.Ctx.GetSession()
+			require.NoError(t, err)
+
+			username := testUsername
+			us.PasswordResetUsername = &username
+			us.PasswordResetID = tc.id
+
+			require.NoError(t, mock.Ctx.SaveSession(&us))
+
+			if tc.verification != nil {
+				mock.StorageMock.EXPECT().LoadIdentityVerification(gomock.Any(), tc.id).Return(tc.verification, nil)
+			}
+
+			mock.Ctx.Request.SetBodyString(`{"password":"a-new-password-1"}`)
+
+			ResetPasswordPOST(mock.Ctx)
+
+			assert.Equal(t, fasthttp.StatusOK, mock.Ctx.Response.StatusCode())
+			assert.Contains(t, string(mock.Ctx.Response.Body()), `"status":"KO"`)
+		})
+	}
 }
