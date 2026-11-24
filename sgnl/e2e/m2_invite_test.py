@@ -95,6 +95,14 @@ time.sleep(2)
 _, finish, _ = redeem(short)
 check('an expired link is refused', finish == 'KO', finish)
 
+# A link opened in time can't be finished after it expired.
+st, b, opened = invite('invited', '3s')
+half = Client()
+_, _, f = half.req('POST', '/api/account-setup/identity/finish', {'token': opened})
+time.sleep(4)
+_, _, setup = half.req('POST', '/api/account-setup', {'password': 'a-late-password-1'})
+check('an opened link which expired since can not finish the setup', json.loads(f).get('status') == 'OK' and json.loads(setup).get('status') == 'KO', f'{f} {setup}')
+
 api.req('PATCH', '/api/admin/users/invited', {'disabled': True}, A)
 st, b, _ = invite('invited')
 check('a disabled user can not be invited', st == 400, b)

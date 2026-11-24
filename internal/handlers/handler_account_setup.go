@@ -207,8 +207,8 @@ func accountSetupIdentityFinish(ctx *middlewares.AutheliaCtx, username string) {
 	ctx.ReplyOK()
 }
 
-// accountSetupLinkValid checks again that the invite link the session redeemed belongs to the user and was not
-// revoked since.
+// accountSetupLinkValid checks again that the invite link the session redeemed belongs to the user, and was neither
+// revoked nor expired since.
 func accountSetupLinkValid(ctx *middlewares.AutheliaCtx, id, username string) bool {
 	verification, err := ctx.Providers.StorageProvider.LoadIdentityVerification(ctx, id)
 
@@ -223,6 +223,10 @@ func accountSetupLinkValid(ctx *middlewares.AutheliaCtx, id, username string) bo
 		return false
 	case verification.RevokedAt.Valid:
 		ctx.GetLogger().WithField("username", username).Error("Error occurred during account setup: the invite link was revoked since it was opened")
+
+		return false
+	case !ctx.GetClock().Now().Before(verification.ExpiresAt):
+		ctx.GetLogger().WithField("username", username).Error("Error occurred during account setup: the invite link expired since it was opened")
 
 		return false
 	default:
