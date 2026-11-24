@@ -64,6 +64,10 @@ var (
 	// ErrAuthenticationEmailTaken is returned when an email is already used by another user.
 	ErrAuthenticationEmailTaken = errors.New("the email is already used by another user")
 
+	// ErrAuthenticationUserChanged is returned when a user changed since it was read for an update, which is then not
+	// made; the update can be tried again.
+	ErrAuthenticationUserChanged = errors.New("the authentication user changed since it was read")
+
 	// ErrAuthenticationGroupExists is returned when a group with the same name already exists.
 	ErrAuthenticationGroupExists = errors.New("the group already exists")
 

@@ -438,12 +438,18 @@ func (p *SQLProvider) updateAuthenticationUser(ctx context.Context, username str
 			return fmt.Errorf("error updating authentication user '%s': %w", username, err)
 		}
 
+		read := user.Signature
+
 		user.UpdatedAt = time.Now().UTC().Truncate(time.Second)
 		user.Signature = p.authenticationUserSignature(user)
 
-		if _, err = p.conn(ctx).ExecContext(ctx, p.sqlUpdateAuthenticationUser,
+		// The row is only written if it is still the one read, so a concurrent change, such as a disable, isn't undone
+		// by this one: the engines other than SQLite don't serialise the transactions.
+		var result sql.Result
+
+		if result, err = p.conn(ctx).ExecContext(ctx, p.sqlUpdateAuthenticationUser,
 			user.UpdatedAt, user.Email, user.DisplayName, user.GivenName, user.FamilyName, user.Password, user.Disabled,
-			user.Signature, user.ID); err != nil {
+			user.Signature, user.ID, read); err != nil {
 			if IsUniqueViolation(err) {
 				return fmt.Errorf("error updating authentication user '%s': %w", username, ErrAuthenticationEmailTaken)
 			}
@@ -451,8 +457,29 @@ func (p *SQLProvider) updateAuthenticationUser(ctx context.Context, username str
 			return fmt.Errorf("error updating authentication user '%s': %w", username, err)
 		}
 
-		return nil
+		return p.checkAuthenticationUserUpdated(ctx, result, user)
 	})
+}
+
+// checkAuthenticationUserUpdated returns ErrAuthenticationUserChanged if the update of a user wrote no row because the
+// row changed since it was read. MySQL counts a row which the update matched but didn't change as not affected, so a row
+// which already has the new signature is updated.
+func (p *SQLProvider) checkAuthenticationUserUpdated(ctx context.Context, result sql.Result, user *model.AuthenticationUser) (err error) {
+	if n, err := result.RowsAffected(); err != nil || n == 1 {
+		return err
+	}
+
+	var signature string
+
+	if err = p.conn(ctx).GetContext(ctx, &signature, p.db.Rebind(fmt.Sprintf(queryFmtSelectAuthenticationUserSignatureByID, tableAuthenticationUsers)), user.ID); err != nil {
+		return fmt.Errorf("error updating authentication user '%s': %w", user.Username, err)
+	}
+
+	if signature != user.Signature {
+		return fmt.Errorf("error updating authentication user '%s': %w", user.Username, ErrAuthenticationUserChanged)
+	}
+
+	return nil
 }
 
 // checkAuthenticationUserAvailable checks that a username (when not empty) is neither taken nor deleted, and that an

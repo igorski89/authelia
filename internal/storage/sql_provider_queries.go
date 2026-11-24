@@ -990,6 +990,11 @@ const (
 	queryFmtUpdateAuthenticationUser = `
 		UPDATE %s
 		SET updated_at = ?, email = ?, display_name = ?, given_name = ?, family_name = ?, password = ?, disabled = ?, signature = ?
+		WHERE id = ? AND signature = ?;`
+
+	queryFmtSelectAuthenticationUserSignatureByID = `
+		SELECT signature
+		FROM %s
 		WHERE id = ?;`
 
 	queryFmtUpdateAuthenticationUserSignature = `

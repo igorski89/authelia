@@ -417,3 +417,28 @@ func TestSQLProviderAuthenticationUserRestoredAfterDelete(t *testing.T) {
 		assert.NotEqual(t, "restored", user.Username)
 	}
 }
+
+// TestSQLProviderAuthenticationUserConcurrentChange changes the row of a user between the read and the write of an
+// update, as a concurrent request could on the engines which don't serialise transactions: the update is refused
+// instead of undoing the other change.
+func TestSQLProviderAuthenticationUserConcurrentChange(t *testing.T) {
+	provider := newTestSQLiteProvider(t)
+	require.NoError(t, provider.StartupCheck())
+
+	ctx := context.Background()
+
+	require.NoError(t, provider.CreateAuthenticationUser(ctx, newTestAuthenticationUser("raced", "raced@example.com")))
+
+	err := provider.updateAuthenticationUser(ctx, "raced", func(ctx context.Context, user *model.AuthenticationUser) error {
+		_, err := provider.conn(ctx).ExecContext(ctx, "UPDATE authentication_users SET signature = 'changed-by-another-request' WHERE id = ?", user.ID)
+
+		user.DisplayName = "Not Written"
+
+		return err
+	})
+	assert.ErrorIs(t, err, ErrAuthenticationUserChanged)
+
+	// An update without a concurrent change, also one which writes the same values, is made.
+	require.NoError(t, provider.UpdateAuthenticationUserDisabled(ctx, "raced", true))
+	require.NoError(t, provider.UpdateAuthenticationUserDisabled(ctx, "raced", true))
+}

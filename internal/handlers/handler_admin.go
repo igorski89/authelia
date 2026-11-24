@@ -494,6 +494,8 @@ func adminConflictDescription(err error) string {
 		return "The group exists already."
 	case errors.Is(err, storage.ErrAuthenticationUserGroupExists):
 		return "The user is a member of the group already."
+	case errors.Is(err, storage.ErrAuthenticationUserChanged):
+		return "The user was changed by another request at the same time; try again."
 	default:
 		return "The request conflicts with an existing user or group."
 	}

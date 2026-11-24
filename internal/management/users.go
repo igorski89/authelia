@@ -843,7 +843,7 @@ func wrap(err error) error {
 		return fmt.Errorf("%w: %w", ErrNotFound, err)
 	case errors.Is(err, storage.ErrAuthenticationUsernameTaken), errors.Is(err, storage.ErrAuthenticationUsernameDeleted),
 		errors.Is(err, storage.ErrAuthenticationEmailTaken), errors.Is(err, storage.ErrAuthenticationGroupExists),
-		errors.Is(err, storage.ErrAuthenticationUserGroupExists):
+		errors.Is(err, storage.ErrAuthenticationUserGroupExists), errors.Is(err, storage.ErrAuthenticationUserChanged):
 		return fmt.Errorf("%w: %w", ErrConflict, err)
 	default:
 		return err

@@ -7,8 +7,9 @@ package middlewares
 import (
 	"testing"
 
-	oauthelia2 "authelia.com/provider/oauth2"
 	"github.com/stretchr/testify/assert"
+
+	oauthelia2 "authelia.com/provider/oauth2"
 
 	"github.com/authelia/authelia/v4/internal/oidc"
 )

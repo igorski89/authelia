@@ -66,6 +66,7 @@ func TestEngines(t *testing.T) {
 			testEngineAuthenticationLogs(t, provider)
 			testEngineWebAuthnCredentialImported(t, provider)
 			testEngineUserRevocations(t, provider)
+			testEngineAuthenticationUserUpdates(t, provider)
 		})
 	}
 
@@ -170,4 +171,19 @@ func testEngineUserRevocations(t *testing.T, provider Provider) {
 	for _, revocation := range revocations {
 		assert.True(t, revocation.RevokedAt.Equal(at), revocation.RevokedAt)
 	}
+}
+
+// testEngineAuthenticationUserUpdates writes the same values twice in the same second, which MySQL counts as a row
+// matched but not affected: the update must not be taken as a concurrent change.
+func testEngineAuthenticationUserUpdates(t *testing.T, provider Provider) {
+	ctx := context.Background()
+	username := "updated-" + uuid.NewString()[:8]
+
+	require.NoError(t, provider.CreateAuthenticationUser(ctx, model.AuthenticationUser{Username: username, Email: username + "@example.com"}))
+	require.NoError(t, provider.UpdateAuthenticationUserDisabled(ctx, username, true))
+	require.NoError(t, provider.UpdateAuthenticationUserDisabled(ctx, username, true))
+
+	user, err := provider.LoadAuthenticationUser(ctx, username)
+	require.NoError(t, err)
+	assert.True(t, user.Disabled)
 }
