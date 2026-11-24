@@ -153,11 +153,12 @@ type RegisteredClient struct {
 
 	AuthorizationPolicy ClientAuthorizationPolicy
 
-	ConsentPolicy         ClientConsentPolicy
-	RequestedAudienceMode ClientRequestedAudienceMode
-	RequestedResourceMode ClientRequestedResourceMode
-	AudienceStrategy      oauthelia2.AudienceStrategy
-	ResourceStrategy      oauthelia2.ResourceStrategy
+	ConsentPolicy                ClientConsentPolicy
+	RequestedAudienceMode        ClientRequestedAudienceMode
+	ImplicitAudienceWithResource bool
+	RequestedResourceMode        ClientRequestedResourceMode
+	AudienceStrategy             oauthelia2.AudienceStrategy
+	ResourceStrategy             oauthelia2.ResourceStrategy
 
 	SubjectTokenTypesSupported     []string
 	SubjectTokenIssuersSupported   []string
@@ -235,6 +236,7 @@ type Client interface {
 	IsAuthenticationLevelSufficient(level authentication.Level, subject authorization.Subject) (sufficient bool)
 	GetAuthorizationPolicyRequiredLevel(subject authorization.Subject) (level authorization.Level)
 	GetAuthorizationPolicy() (policy ClientAuthorizationPolicy)
+	GetImplicitAudienceWithResource() (implicit bool)
 
 	GetEffectiveLifespan(gt oauthelia2.GrantType, tt oauthelia2.TokenType, fallback time.Duration) (lifespan time.Duration)
 

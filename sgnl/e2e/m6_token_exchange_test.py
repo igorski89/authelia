@@ -33,30 +33,30 @@ def header(jwt):
     return json.loads(base64.urlsafe_b64decode(segment + '=' * (-len(segment) % 4)))
 
 
-def pkce_login(username='mcpuser', password='a-long-password-x'):
+def pkce_login(username='mcpuser', password='a-long-password-x', client='mcp-login', **extra):
     """Logs in at the portal and runs the authorization code flow of the public client with PKCE."""
     user = Client()
     user.req('POST', '/api/firstfactor', {'username': username, 'password': password})
 
     verifier = secrets.token_urlsafe(48)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
-    query = urllib.parse.urlencode({'client_id': 'mcp-login', 'response_type': 'code', 'scope': 'openid profile email groups',
+    query = urllib.parse.urlencode({'client_id': client, 'response_type': 'code', 'scope': extra.pop('scope', 'openid profile email groups'),
                                     'redirect_uri': REDIRECT, 'state': secrets.token_hex(12), 'nonce': secrets.token_hex(12),
-                                    'code_challenge': challenge, 'code_challenge_method': 'S256'})
+                                    'code_challenge': challenge, 'code_challenge_method': 'S256', **extra})
     _, headers, _ = user.req('GET', '/api/oidc/authorization?' + query)
     location = headers.get('Location', '')
 
     # A public client with a loopback redirect URI gets the consent screen.
     if 'flow_id=' in location:
         flow = urllib.parse.parse_qs(urllib.parse.urlparse(location).query)['flow_id'][0]
-        _, _, body = user.req('POST', '/api/oidc/consent', {'flow_id': flow, 'client_id': 'mcp-login', 'consent': True, 'pre_configure': False})
+        _, _, body = user.req('POST', '/api/oidc/consent', {'flow_id': flow, 'client_id': client, 'consent': True, 'pre_configure': False})
         redirect = urllib.parse.urlparse(json.loads(body)['data']['redirect_uri'])
         _, headers, _ = user.req('GET', redirect.path[len(BASE):] + '?' + redirect.query)
         location = headers.get('Location', '')
 
     code = urllib.parse.parse_qs(urllib.parse.urlparse(location).query).get('code', [''])[0]
     _, _, body = Client().req('POST', '/api/oidc/token', {'grant_type': 'authorization_code', 'code': code, 'redirect_uri': REDIRECT,
-                                                          'client_id': 'mcp-login', 'code_verifier': verifier}, form=True)
+                                                          'client_id': client, 'code_verifier': verifier, **extra}, form=True)
 
     return json.loads(body)
 
@@ -109,6 +109,27 @@ check('introspection reports the exchanged token active', introspect('mcp-gatewa
 with open(SAMPLES, 'w') as f:
     json.dump({'login_token': {'header': header(login_token), 'claims': login_claims},
                'exchanged_token': {'header': header(token) if token else None, 'claims': ex_claims, 'response': {k: v for k, v in exchanged.items() if k != 'access_token'}}}, f, indent=2)
+
+# An MCP client names its resource (RFC 8707), as Claude Code does. With 'implicit_audience_with_resource' the token is
+# for the resource and the gateway, so the gateway may exchange it; without, the library leaves only the resource.
+MCP_RESOURCE = 'http://localhost:8765/mcp'
+res_login = pkce_login(resource=MCP_RESOURCE).get('access_token', '')
+res_claims = claims(res_login) if res_login.count('.') == 2 else {}
+check('resource login: aud has the resource and the gateway', set(res_claims.get('aud') or []) >= {MCP_RESOURCE, 'mcp-gateway'}, res_claims.get('aud'))
+st, body = exchange(res_login)
+check('resource login: the gateway exchanges it', st == 200 and body.get('access_token'), f'{st} {body}')
+# Claude Code names the resource on every refresh too.
+offline = pkce_login(resource=MCP_RESOURCE, scope='openid profile email groups offline_access')
+st, _, body = Client().req('POST', '/api/oidc/token', {'grant_type': 'refresh_token', 'refresh_token': offline.get('refresh_token', ''),
+                                                       'client_id': 'mcp-login', 'resource': MCP_RESOURCE}, form=True)
+refreshed = json.loads(body).get('access_token', '') if st == 200 else ''
+refreshed_claims = claims(refreshed) if refreshed.count('.') == 2 else {}
+check('resource refresh: aud still has the resource and the gateway', st == 200 and set(refreshed_claims.get('aud') or []) >= {MCP_RESOURCE, 'mcp-gateway'}, f'{st} {refreshed_claims.get("aud") or body[:200]}')
+st, body = exchange(refreshed, scope='openid profile email groups')
+check('resource refresh: the gateway exchanges the refreshed token', st == 200 and body.get('access_token'), f'{st} {body}')
+plain_login = pkce_login(client='mcp-login-plain', resource=MCP_RESOURCE).get('access_token', '')
+plain_claims = claims(plain_login) if plain_login.count('.') == 2 else {}
+check('resource login without the option: aud is the resource only (unchanged behaviour)', plain_claims.get('aud') == [MCP_RESOURCE], plain_claims.get('aud'))
 
 # Audiences.
 st, body = exchange(login_token, audience='test')

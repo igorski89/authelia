@@ -44,6 +44,8 @@ func OAuth2AuthorizationGET(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter
 		return
 	}
 
+	handleOAuth2ImplicitAudienceWithResource(ctx, r)
+
 	if requester, err = ctx.Providers.OpenIDConnect.NewAuthorizeRequest(ctx, r); requester == nil {
 		requester = oauthelia2.NewAuthorizeRequest()
 

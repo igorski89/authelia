@@ -58,11 +58,12 @@ func NewClient(config schema.IdentityProvidersOpenIDConnectClient, c *schema.Ide
 		ClientAssertionJWTValidationHeaderAllowEmptyType: config.ClientAssertionJWTValidationHeaderAllowEmptyType,
 		ClientAssertionJWTValidationHeaderAllowTypes:     config.ClientAssertionJWTValidationHeaderAllowTypes,
 
-		ConsentPolicy:         newClientConsentPolicyOfflineAccess(NewClientConsentPolicy(config.ConsentMode, config.ConsentPreConfiguredDuration), config.ConsentImplicitOfflineAccess),
-		RequestedAudienceMode: NewClientRequestedAudienceMode(config.RequestedAudienceMode),
-		RequestedResourceMode: NewClientRequestedResourceMode(config.RequestedResourceMode),
-		AudienceStrategy:      NewAudienceStrategy(config.AudienceStrategy),
-		ResourceStrategy:      NewResourceStrategy(config.ResourceStrategy),
+		ConsentPolicy:                newClientConsentPolicyOfflineAccess(NewClientConsentPolicy(config.ConsentMode, config.ConsentPreConfiguredDuration), config.ConsentImplicitOfflineAccess),
+		RequestedAudienceMode:        NewClientRequestedAudienceMode(config.RequestedAudienceMode),
+		ImplicitAudienceWithResource: config.ImplicitAudienceWithResource,
+		RequestedResourceMode:        NewClientRequestedResourceMode(config.RequestedResourceMode),
+		AudienceStrategy:             NewAudienceStrategy(config.AudienceStrategy),
+		ResourceStrategy:             NewResourceStrategy(config.ResourceStrategy),
 
 		AuthorizationSignedResponseAlg:                   config.AuthorizationSignedResponseAlg,
 		AuthorizationSignedResponseKeyID:                 config.AuthorizationSignedResponseKeyID,
@@ -1098,4 +1099,11 @@ func (d decoratedUserinfoClient) GetJSONWebKeys() (jwks *jose.JSONWebKeySet) {
 
 func (d decoratedUserinfoClient) GetJSONWebKeysURI() (uri string) {
 	return d.client.GetJSONWebKeysURI()
+}
+
+// GetImplicitAudienceWithResource reports whether the configured audience of the client is added to an authorization
+// request which names a resource but no audience. The library only adds it to a request which names neither, while a
+// client following RFC 8707, such as an MCP client, always names the resource.
+func (c *RegisteredClient) GetImplicitAudienceWithResource() (implicit bool) {
+	return c.ImplicitAudienceWithResource
 }

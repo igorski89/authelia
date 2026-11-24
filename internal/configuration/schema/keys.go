@@ -365,6 +365,7 @@ var Keys = []string{
 	"identity_providers.oidc.clients[].id_token_signed_response_alg",
 	"identity_providers.oidc.clients[].id_token_signed_response_key_id",
 	"identity_providers.oidc.clients[].impersonation_allowed",
+	"identity_providers.oidc.clients[].implicit_audience_with_resource",
 	"identity_providers.oidc.clients[].introspection_audience",
 	"identity_providers.oidc.clients[].introspection_encrypted_response_alg",
 	"identity_providers.oidc.clients[].introspection_encrypted_response_enc",

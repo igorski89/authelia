@@ -21,11 +21,10 @@ import (
 
 	jose "authelia.com/provider/jose"
 	oauth2 "authelia.com/provider/oauth2"
-	gomock "go.uber.org/mock/gomock"
-
 	authentication "github.com/authelia/authelia/v4/internal/authentication"
 	authorization "github.com/authelia/authelia/v4/internal/authorization"
 	oidc "github.com/authelia/authelia/v4/internal/oidc"
+	gomock "go.uber.org/mock/gomock"
 )
 
 // MockOIDCClient is a mock of Client interface.
@@ -472,6 +471,20 @@ func (m *MockOIDCClient) GetImpersonationAllowed() bool {
 func (mr *MockOIDCClientMockRecorder) GetImpersonationAllowed() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetImpersonationAllowed", reflect.TypeOf((*MockOIDCClient)(nil).GetImpersonationAllowed))
+}
+
+// GetImplicitAudienceWithResource mocks base method.
+func (m *MockOIDCClient) GetImplicitAudienceWithResource() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetImplicitAudienceWithResource")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// GetImplicitAudienceWithResource indicates an expected call of GetImplicitAudienceWithResource.
+func (mr *MockOIDCClientMockRecorder) GetImplicitAudienceWithResource() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetImplicitAudienceWithResource", reflect.TypeOf((*MockOIDCClient)(nil).GetImplicitAudienceWithResource))
 }
 
 // GetIntrospectionEncryptedResponseAlg mocks base method.

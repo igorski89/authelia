@@ -190,3 +190,20 @@ func TestValidateOIDCClientTokenExchangeTargets(t *testing.T) {
 	assert.Contains(t, errs[1], "must only contain registered client IDs with the token exchange grant type, but they contain 'https://cloud.example.com'")
 	assert.Contains(t, errs[2], "option 'authorization_policy' of the client 'office-app' is 'office', which has rules with 'networks'")
 }
+
+func TestValidateOIDCClientImplicitAudienceWithResource(t *testing.T) {
+	config := &schema.IdentityProvidersOpenIDConnect{
+		Clients: []schema.IdentityProvidersOpenIDConnectClient{
+			{ID: "without", ImplicitAudienceWithResource: true},
+			{ID: "with", ImplicitAudienceWithResource: true, Audience: []string{"gateway"}},
+		},
+	}
+
+	validator := schema.NewStructValidator()
+
+	validateOIDCClientImplicitAudienceWithResource(0, config, validator)
+	validateOIDCClientImplicitAudienceWithResource(1, config, validator)
+
+	require.Len(t, validator.Errors(), 1)
+	assert.EqualError(t, validator.Errors()[0], "identity_providers: oidc: clients: client 'without': option 'implicit_audience_with_resource' requires option 'audience'")
+}

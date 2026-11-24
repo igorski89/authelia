@@ -99,6 +99,23 @@ identity_providers:
         public: true
         authorization_policy: 'one_factor'
         redirect_uris: ['http://127.0.0.1:47621/callback']
+        scopes: ['openid', 'profile', 'email', 'groups', 'offline_access']
+        response_types: ['code']
+        grant_types: ['authorization_code', 'refresh_token']
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'none'
+        audience: ['mcp-gateway', 'aud-only']
+        requested_audience_mode: 'implicit'
+        resource: ['http://localhost:8765/mcp']
+        implicit_audience_with_resource: true
+        access_token_signed_response_alg: 'RS256'
+        claims_policy: 'mcp'
+        lifespan: 'mcp_login'
+        subject_token_clients_supported: ['mcp-gateway']
+      - client_id: 'mcp-login-plain'
+        public: true
+        authorization_policy: 'one_factor'
+        redirect_uris: ['http://127.0.0.1:47621/callback']
         scopes: ['openid', 'profile', 'email', 'groups']
         response_types: ['code']
         grant_types: ['authorization_code']
@@ -106,6 +123,7 @@ identity_providers:
         token_endpoint_auth_method: 'none'
         audience: ['mcp-gateway', 'aud-only']
         requested_audience_mode: 'implicit'
+        resource: ['http://localhost:8765/mcp']
         access_token_signed_response_alg: 'RS256'
         claims_policy: 'mcp'
         lifespan: 'mcp_login'
