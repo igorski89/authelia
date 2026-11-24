@@ -20,6 +20,7 @@ import (
 	oauthelia2 "authelia.com/provider/oauth2"
 	"authelia.com/provider/oauth2/compose"
 	"authelia.com/provider/oauth2/handler/oauth2"
+	"authelia.com/provider/oauth2/handler/rfc8693"
 	"authelia.com/provider/oauth2/token/jwt"
 
 	"github.com/authelia/authelia/v4/internal/authentication"
@@ -767,4 +768,49 @@ func (t *testConfigContext) GetUserProvider() authentication.UserProvider { retu
 
 func (t *testConfigContext) GetProviderUserAttributeResolver() expression.UserAttributeResolver {
 	return nil
+}
+
+func TestNewConfigRegistersRFC8693TokenTypes(t *testing.T) {
+	c := oidc.NewConfig(&schema.IdentityProvidersOpenIDConnect{}, nil, nil)
+
+	types := c.GetRFC8693TokenTypes(context.TODO())
+
+	require.NotNil(t, types)
+	assert.Len(t, types, 1)
+
+	for _, name := range []string{oidc.TokenTypeAccessToken} {
+		tokenType, ok := types[name]
+
+		require.True(t, ok, "token type %s must be registered", name)
+		require.NotNil(t, tokenType)
+		assert.Equal(t, name, tokenType.GetName(context.TODO()))
+	}
+
+	assert.NotContains(t, types, oidc.TokenTypeJWT)
+	assert.Equal(t, oidc.TokenTypeAccessToken, c.GetDefaultRFC8693RequestedTokenType(context.TODO()))
+}
+
+// TestConfigLoadHandlersRFC8693 checks only the RFC 8693 grant, access token type, and actor token validation handlers
+// are registered, in the order compose.RFC8693TokenExchangeFactories requires.
+func TestConfigLoadHandlersRFC8693(t *testing.T) {
+	c := oidc.NewConfig(&schema.IdentityProvidersOpenIDConnect{}, oidc.NewIssuer(nil), nil)
+
+	c.LoadHandlers(&oidc.Store{})
+
+	var order []string
+
+	for _, handler := range c.Handlers.TokenEndpoint {
+		switch handler.(type) {
+		case *rfc8693.TokenExchangeGrantHandler:
+			order = append(order, "grant")
+		case *rfc8693.AccessTokenTypeHandler:
+			order = append(order, "access_token")
+		case *rfc8693.ActorTokenValidationHandler:
+			order = append(order, "actor_token_validation")
+		case *rfc8693.RefreshTokenTypeHandler, *rfc8693.IDTokenTypeHandler, *rfc8693.CustomJWTTypeHandler, *rfc8693.TxnTokenTypeHandler:
+			t.Fatalf("unexpected RFC 8693 handler %T", handler)
+		}
+	}
+
+	assert.Equal(t, []string{"grant", "access_token", "actor_token_validation"}, order)
 }

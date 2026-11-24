@@ -460,6 +460,20 @@ func (mr *MockOIDCClientMockRecorder) GetIDTokenSignedResponseKeyID() *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIDTokenSignedResponseKeyID", reflect.TypeOf((*MockOIDCClient)(nil).GetIDTokenSignedResponseKeyID))
 }
 
+// GetImpersonationAllowed mocks base method.
+func (m *MockOIDCClient) GetImpersonationAllowed() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetImpersonationAllowed")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// GetImpersonationAllowed indicates an expected call of GetImpersonationAllowed.
+func (mr *MockOIDCClientMockRecorder) GetImpersonationAllowed() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetImpersonationAllowed", reflect.TypeOf((*MockOIDCClient)(nil).GetImpersonationAllowed))
+}
+
 // GetIntrospectionEncryptedResponseAlg mocks base method.
 func (m *MockOIDCClient) GetIntrospectionEncryptedResponseAlg() string {
 	m.ctrl.T.Helper()

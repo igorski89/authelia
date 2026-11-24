@@ -42,6 +42,10 @@ func OAuth2TokenPOST(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, req *
 	if requester, err = ctx.Providers.OpenIDConnect.NewAccessRequest(ctx, req, session); err != nil {
 		ctx.GetLogger().Errorf("Access Request failed with error: %s", oauthelia2.ErrorToDebugRFC6749Error(err))
 
+		if req.PostForm.Get(oidc.FormParameterGrantType) == oidc.GrantTypeTokenExchange {
+			logOAuth2TokenExchange(ctx, requester, nil, err)
+		}
+
 		ctx.Providers.OpenIDConnect.WriteAccessError(ctx, rw, requester, err)
 
 		return
@@ -51,6 +55,8 @@ func OAuth2TokenPOST(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, req *
 		err = oauthelia2.ErrInvalidRequest.WithDebug("The original request and the access request occurred at endpoints where the effective issuer did not match.")
 
 		ctx.GetLogger().WithError(err).Errorf("Access Request with id '%s' could not be processed: %s", requester.GetID(), oauthelia2.ErrorToDebugRFC6749Error(err))
+
+		logOAuth2TokenExchange(ctx, requester, nil, err)
 
 		ctx.Providers.OpenIDConnect.WriteAccessError(ctx, rw, requester, err)
 
@@ -64,6 +70,8 @@ func OAuth2TokenPOST(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, req *
 		err = oauthelia2.ErrServerError.WithDebug("The requester contained an unknown client implementation")
 
 		ctx.GetLogger().Errorf("Access Response for Request with id '%s' failed with error: %s", requester.GetID(), oauthelia2.ErrorToDebugRFC6749Error(err))
+
+		logOAuth2TokenExchange(ctx, requester, nil, err)
 
 		ctx.Providers.OpenIDConnect.WriteAccessError(ctx, rw, requester, err)
 
@@ -99,10 +107,14 @@ func OAuth2TokenPOST(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, req *
 	if responder, err = ctx.Providers.OpenIDConnect.NewAccessResponse(ctx, requester); err != nil {
 		ctx.GetLogger().Errorf("Access Response for Request with id '%s' failed to be created with error: %s", requester.GetID(), oauthelia2.ErrorToDebugRFC6749Error(err))
 
+		logOAuth2TokenExchange(ctx, requester, nil, err)
+
 		ctx.Providers.OpenIDConnect.WriteAccessError(ctx, rw, requester, err)
 
 		return
 	}
+
+	logOAuth2TokenExchange(ctx, requester, responder, nil)
 
 	ctx.GetLogger().Debugf("Access Request with id '%s' on client with id '%s' has successfully been processed", requester.GetID(), client.GetID())
 
@@ -114,8 +126,19 @@ func OAuth2TokenPOST(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, req *
 // handleOAuth2TokenUserPermitted refuses to issue tokens on behalf of a user who has since been deleted or disabled, for
 // example when a refresh token is used after the user was disabled. Only the user provider reporting the user as not
 // found refuses the grant; any other error is reported as a server error so a transient failure doesn't look final.
+//
+// For an RFC 8693 Token Exchange the session is a fresh one which only carries the subject of the 'subject_token', so
+// the grant checked is the one the 'subject_token' was issued for: it's refused when the user was logged out of the
+// client the 'subject_token' was issued to, or of the client performing the exchange, since that grant was authorized.
+// A 'subject_token' issued via the client credentials grant has no user and is left to the token exchange policy.
 func handleOAuth2TokenUserPermitted(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, requester oauthelia2.AccessRequester, client oidc.Client, session *oidc.Session) (handled bool) {
 	if session.ClientCredentials || len(session.Subject) == 0 || requester.GetGrantTypes().ExactOne(oidc.GrantTypeClientCredentials) {
+		return false
+	}
+
+	exchange := requester.GetGrantTypes().ExactOne(oidc.GrantTypeTokenExchange)
+
+	if exchange && oidc.TokenExchangeSubjectClientCredentials(session) {
 		return false
 	}
 
@@ -127,7 +150,7 @@ func handleOAuth2TokenUserPermitted(ctx *middlewares.AutheliaCtx, rw http.Respon
 		// A grant authorized before the user was logged out of the client is over, also when a request which was
 		// already running issued it after the revocation. The time of the authorization request is compared, not the
 		// time of the login: after a logout of one client the portal session stays and may authorize it again.
-		revoked, err = middlewares.IsUserRevoked(ctx, ctx.Providers.StorageProvider, detailer.GetUsername(), client.GetID(), session.GetRequestedAt(), middlewares.RevocationResolutionGrant)
+		revoked, err = handleOAuth2TokenUserRevoked(ctx, client, session, detailer.GetUsername(), exchange)
 	}
 
 	switch {
@@ -146,9 +169,36 @@ func handleOAuth2TokenUserPermitted(ctx *middlewares.AutheliaCtx, rw http.Respon
 		WithError(oauthelia2.ErrorToDebugRFC6749Error(err)).
 		Error("Access Request was refused as the user it was issued to could not be confirmed")
 
+	logOAuth2TokenExchange(ctx, requester, nil, err)
+
 	ctx.Providers.OpenIDConnect.WriteAccessError(ctx, rw, requester, err)
 
 	return true
+}
+
+func handleOAuth2TokenUserRevoked(ctx *middlewares.AutheliaCtx, client oidc.Client, session *oidc.Session, username string, exchange bool) (revoked bool, err error) {
+	if !exchange {
+		return middlewares.IsUserRevoked(ctx, ctx.Providers.StorageProvider, username, client.GetID(), session.GetRequestedAt(), middlewares.RevocationResolutionGrant)
+	}
+
+	original := session.GetSubjectRequester()
+	if original == nil || original.GetClient() == nil || original.GetSession() == nil {
+		return false, oauthelia2.ErrServerError.WithDebug("The token exchange session has no request the 'subject_token' was issued for.")
+	}
+
+	requestedAt := original.GetRequestedAt()
+
+	if subject, ok := original.GetSession().(*oidc.Session); ok && subject.DefaultSession != nil && !subject.GetRequestedAt().IsZero() {
+		requestedAt = subject.GetRequestedAt()
+	}
+
+	for _, clientID := range []string{original.GetClient().GetID(), client.GetID()} {
+		if revoked, err = middlewares.IsUserRevoked(ctx, ctx.Providers.StorageProvider, username, clientID, requestedAt, middlewares.RevocationResolutionGrant); err != nil || revoked {
+			return revoked, err
+		}
+	}
+
+	return false, nil
 }
 
 func handleOAuth2TokenHydration(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, requester oauthelia2.AccessRequester, client oidc.Client, session *oidc.Session) (handled bool) {
@@ -180,6 +230,22 @@ func handleOAuth2TokenHydration(ctx *middlewares.AutheliaCtx, rw http.ResponseWr
 		return false
 	}
 
+	exchange := requester.GetGrantTypes().ExactOne(oidc.GrantTypeTokenExchange)
+
+	if exchange {
+		// The RFC 8693 token type handlers load the subject token into a fresh session, so the identity of the client
+		// performing the exchange and of the subject have to be established before the token is issued.
+		oidc.HydrateTokenExchangeSessionWithRequestingClient(client, session)
+
+		if _, err = handleOAuth2TokenExchangePolicy(ctx, requester, client, session); err != nil {
+			logOAuth2TokenExchange(ctx, requester, nil, err)
+
+			ctx.Providers.OpenIDConnect.WriteAccessError(ctx, rw, requester, err)
+
+			return true
+		}
+	}
+
 	if client.GetEnableJWTProfileOAuthAccessTokens() {
 		ctx.GetLogger().WithFields(map[string]any{"subject": session.Subject, "scope": requester.GetRequestedScopes()}).Debug("Hydrate JWT Profile Access Token claims")
 
@@ -199,6 +265,10 @@ func handleOAuth2TokenHydration(ctx *middlewares.AutheliaCtx, rw http.ResponseWr
 				WithError(oauthelia2.ErrorToDebugRFC6749Error(err)).
 				Error("Access Request encountered an error while trying to obtain the detailer to hydrate the JWT Profile Access Token claims")
 
+			if exchange {
+				logOAuth2TokenExchange(ctx, requester, nil, err)
+			}
+
 			ctx.Providers.OpenIDConnect.WriteAccessError(ctx, rw, requester, err)
 
 			return true
@@ -211,6 +281,10 @@ func handleOAuth2TokenHydration(ctx *middlewares.AutheliaCtx, rw http.ResponseWr
 				WithFields(map[string]any{"oauth2_access_request_id": requester.GetID()}).
 				WithError(oauthelia2.ErrorToDebugRFC6749Error(err)).
 				Error("Access Request encountered an error while trying to hydrate the JWT Profile Access Token claims")
+
+			if exchange {
+				logOAuth2TokenExchange(ctx, requester, nil, err)
+			}
 
 			ctx.Providers.OpenIDConnect.WriteAccessError(ctx, rw, requester, err)
 

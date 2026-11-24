@@ -22,6 +22,7 @@ import (
 	"authelia.com/provider/oauth2/handler/par"
 	"authelia.com/provider/oauth2/handler/pkce"
 	"authelia.com/provider/oauth2/handler/rfc8628"
+	"authelia.com/provider/oauth2/handler/rfc8693"
 	"authelia.com/provider/oauth2/i18n"
 	"authelia.com/provider/oauth2/token/jwt"
 
@@ -52,6 +53,10 @@ func NewConfig(config *schema.IdentityProvidersOpenIDConnect, issuer *Issuer, te
 			Require:         config.RequirePushedAuthorizationRequests,
 			ContextLifespan: 5 * time.Minute,
 			URIPrefix:       RedirectURIPrefixPushedAuthorizationRequestURN,
+		},
+		RFC8693: RFC8693Config{
+			TokenTypes:                NewRFC8693TokenTypes(&config.TokenExchange, issuer),
+			DefaultRequestedTokenType: defaultRequestedTokenType(&config.TokenExchange),
 		},
 		JWTAccessToken: JWTAccessTokenConfig{
 			Enable:                       config.Discovery.JWTResponseAccessTokens,
@@ -327,6 +332,8 @@ type StatelessJWTStrategy struct {
 func (c *Config) LoadHandlers(store *Store) {
 	validator := openid.NewOpenIDConnectRequestValidator(c.Strategy.JWT, c)
 
+	refreshTokenScopes := c.GetRefreshTokenScopes(context.Background())
+
 	var statelessJWT any
 
 	if c.JWTAccessToken.Enable && c.JWTAccessToken.EnableStatelessIntrospection {
@@ -477,6 +484,27 @@ func (c *Config) LoadHandlers(store *Store) {
 			Storage: store,
 			Config:  c,
 		},
+
+		// RFC 8693 Token Exchange, in the order compose.RFC8693TokenExchangeFactories requires: the grant handler first,
+		// the token type handlers, and the actor token validation handler last. Only the access token type is
+		// supported, so the refresh token, ID Token, custom JWT and Transaction Token type handlers aren't registered.
+		&rfc8693.TokenExchangeGrantHandler{
+			Config:           c,
+			ScopeStrategy:    c.Strategy.Scope,
+			AudienceStrategy: c.Strategy.Audience,
+			ResourceStrategy: c.Strategy.Resource,
+		},
+		&rfc8693.AccessTokenTypeHandler{
+			Config:                 c,
+			AccessTokenLifespan:    c.Lifespans.AccessToken,
+			RefreshTokenLifespan:   c.Lifespans.RefreshToken,
+			RefreshTokenScopes:     refreshTokenScopes,
+			ScopeStrategy:          c.Strategy.Scope,
+			CoreStrategy:           c.Strategy.Core,
+			Storage:                store,
+			TokenRevocationStorage: store,
+		},
+		&rfc8693.ActorTokenValidationHandler{},
 
 		// Response Modes Handling.
 		&oauthelia2.DefaultResponseModeHandler{

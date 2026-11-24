@@ -342,6 +342,29 @@ const (
 		"%s but it's configured as '%s'"
 	errFmtOIDCClientInvalidEntries = errFmtOIDCClientOption + errFmtMustOnlyHaveValues +
 		"but the values %s are present"
+	errFmtOIDCClientTokenExchangeWithoutGrantType = errFmtOIDCClientOption + "'%s' can only be configured when the " +
+		"'grant_types' option contains '" + oidc.GrantTypeTokenExchange + "'"
+	errFmtOIDCClientTokenExchangeTokenTypeNotEnabled = errFmtOIDCClientOption + "'%s' must only contain token types " +
+		"enabled by 'token_exchange: token_types' but it has %s"
+	errFmtOIDCClientTokenExchangeSubjectTypesDefaultEmpty = errFmtOIDCClientOption + "'%s' must be configured explicitly " +
+		"when 'token_exchange: token_types' does not include any of the default subject token types %s"
+	errFmtOIDCClientTokenExchangeUnknownClient = errFmtOIDCClientOption + "'%s' must only reference registered " +
+		"clients but the client '%s' does not exist"
+	errFmtOIDCClientTokenExchangeDuplicateClient = errFmtOIDCClientOption + "'%s' must only reference each client " +
+		"once but the client '%s' is referenced multiple times"
+	errFmtOIDCClientTokenExchangeClientWithoutGrantType = errFmtOIDCClientOption + "'%s' must only reference clients " +
+		"which have the '" + oidc.GrantTypeTokenExchange + "' value in their 'grant_types' option but the client " +
+		"'%s' does not"
+	errFmtOIDCClientTokenExchangeClientNotInAudience = errFmtOIDCClientOption + "'%s' references client '%s' which " +
+		"is not in the 'audience' option, so tokens issued to this client can never be exchanged by it"
+	errFmtOIDCProviderTokenExchangeInvalidTokenType = "identity_providers: oidc: token_exchange: option " +
+		"'token_types' must only contain the values %s but it has the value '%s'"
+	errFmtOIDCProviderTokenExchangeDuplicateTokenTypes = "identity_providers: oidc: token_exchange: option " +
+		"'token_types' must have unique values but the values %s are duplicated"
+	errFmtOIDCProviderTokenExchangeDefaultNotConfigured = "identity_providers: oidc: token_exchange: option " +
+		"'default_requested_token_type' must be one of the configured 'token_types' %s but it's configured as '%s'"
+	errFmtOIDCProviderTokenExchangeDefaultInvalid = "identity_providers: oidc: token_exchange: option " +
+		"'default_requested_token_type' must not be '%s'"
 	errFmtOIDCClientUnknownScopeEntries = errFmtOIDCClientOption + "'%s' only expects the values " +
 		"%s but the unknown values %s are present and should generally only be used if a particular client requires a scope outside of our standard scopes"
 	errFmtOIDCClientInvalidEntriesScope = errFmtOIDCClientOption + errFmtMustOnlyHaveValues +
@@ -411,6 +434,8 @@ const (
 		"'grant_types' should only have the 'refresh_token' value if the client is also configured with the 'offline_access' scope"
 	errFmtOIDCClientInvalidGrantTypePublic = errFmtOIDCClientOption + "'grant_types' " +
 		"should only have the '%s' value if it is of the confidential client type but it's of the public client type"
+	errFmtOIDCClientInvalidGrantTypeAuthMethodNone = errFmtOIDCClientOption + "'grant_types' " +
+		"should only have the '%s' value if the client authenticates at the token endpoint but option 'token_endpoint_auth_method' is configured as 'none'"
 
 	errFmtOIDCClientInvalidRefreshTokenOptionWithoutCodeResponseType = errFmtOIDCClientOption +
 		"'%s' should only have the values %s if the client is also configured with a 'response_type' such as %s which respond with authorization codes"
@@ -756,9 +781,14 @@ const (
 	attrOIDCResourceStrategy              = "resource_strategy"
 	attrOIDCClientAssertionAllowEmptyType = "client_assertion_jwt_validation_header_allow_empty_type"
 	attrOIDCClientAssertionAllowTypes     = "client_assertion_jwt_validation_header_allow_types"
+	attrOIDCSubjectTokenTypesSupported    = "subject_token_types_supported"
+	attrOIDCRequestTokenTypesSupported    = "request_token_types_supported"
+	attrOIDCSubjectTokenClientsSupported  = "subject_token_clients_supported"
 	attrSessionAutheliaURL                = "authelia_url"
 	attrSessionDomain                     = "domain"
 	attrDefaultRedirectionURL             = "default_redirection_url"
+
+	attrOIDCImpersonationAllowed = "impersonation_allowed"
 )
 
 var (
@@ -779,7 +809,13 @@ var (
 	validOIDCClientResponseTypesImplicitFlow = []string{oidc.ResponseTypeImplicitFlowIDToken, oidc.ResponseTypeImplicitFlowToken, oidc.ResponseTypeImplicitFlowBoth}
 	validOIDCClientResponseTypesHybridFlow   = []string{oidc.ResponseTypeHybridFlowIDToken, oidc.ResponseTypeHybridFlowToken, oidc.ResponseTypeHybridFlowBoth}
 	validOIDCClientResponseTypesRefreshToken = []string{oidc.ResponseTypeAuthorizationCodeFlow, oidc.ResponseTypeHybridFlowIDToken, oidc.ResponseTypeHybridFlowToken, oidc.ResponseTypeHybridFlowBoth}
-	validOIDCClientGrantTypes                = []string{oidc.GrantTypeAuthorizationCode, oidc.GrantTypeImplicit, oidc.GrantTypeClientCredentials, oidc.GrantTypeRefreshToken, oidc.GrantTypeDeviceCode}
+	validOIDCClientGrantTypes                = []string{oidc.GrantTypeAuthorizationCode, oidc.GrantTypeImplicit, oidc.GrantTypeClientCredentials, oidc.GrantTypeRefreshToken, oidc.GrantTypeDeviceCode, oidc.GrantTypeTokenExchange}
+
+	// validOIDCTokenExchangeTokenTypes is limited to the access token type, the only token type with a registered token
+	// type handler. Upstream also permits the refresh token, ID Token and Transaction Token types.
+	validOIDCTokenExchangeTokenTypes = []string{oidc.TokenTypeAccessToken}
+
+	validOIDCClientTokenExchangeSubjectTokenTypesDefault = []string{oidc.TokenTypeAccessToken, oidc.TokenTypeRefreshToken}
 
 	validOIDCClientTokenEndpointAuthMethods                = []string{oidc.ClientAuthMethodNone, oidc.ClientAuthMethodClientSecretPost, oidc.ClientAuthMethodClientSecretBasic, oidc.ClientAuthMethodPrivateKeyJWT, oidc.ClientAuthMethodClientSecretJWT}
 	validOIDCClientTokenEndpointAuthMethodsConfidential    = []string{oidc.ClientAuthMethodClientSecretPost, oidc.ClientAuthMethodClientSecretBasic, oidc.ClientAuthMethodPrivateKeyJWT}
