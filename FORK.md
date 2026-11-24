@@ -72,6 +72,10 @@ Fork-only build files: `FORK.md`, `sgnl/` (image, CI scripts, the end-to-end tes
 
 Planned work that isn't started yet.
 
+- **After M5, log clarity:** an implicit consent which can't be granted logs "the subject is null, the consent has
+  already been granted, or the consent session is a pre-configured session", but the check is `!granted && now <
+  expires_at`; name an expired consent separately (cost the rehearsal an hour, 2026-11-24).
+
 - **MCP login support** (for SGNL's MCP gateway; Keycloak 26.8.2's experimental `cimd:v1` is the reference):
   - Client ID Metadata Documents (CIMD): the `client_id` is an HTTPS URL to the client's metadata, so MCP clients log
     in without registering first; advertise `client_id_metadata_document_supported` in discovery.
