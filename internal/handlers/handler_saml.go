@@ -43,6 +43,10 @@ const (
 
 type ctxKeySAMLAutheliaCtx struct{}
 
+// ctxKeySAMLFlowCreatedAt carries the time the flow of a resumed request was created, which a forced authentication
+// must be later than.
+type ctxKeySAMLFlowCreatedAt struct{}
+
 // ctxKeySAMLResumed marks a request resumed after login. Its session was judged sufficient before, so an insufficient
 // one gets an error rather than another trip through the portal, which could loop.
 type ctxKeySAMLResumed struct{}
@@ -103,7 +107,10 @@ func SAMLSSOResumeGET(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *h
 		return
 	}
 
-	resume, err := http.NewRequestWithContext(context.WithValue(context.WithValue(r.Context(), ctxKeySAMLAutheliaCtx{}, ctx), ctxKeySAMLResumed{}, true), http.MethodPost, idp.SSOURL.String(), strings.NewReader(form.Encode()))
+	resumeCtx := context.WithValue(context.WithValue(r.Context(), ctxKeySAMLAutheliaCtx{}, ctx), ctxKeySAMLResumed{}, true)
+	resumeCtx = context.WithValue(resumeCtx, ctxKeySAMLFlowCreatedAt{}, flow.CreatedAt)
+
+	resume, err := http.NewRequestWithContext(resumeCtx, http.MethodPost, idp.SSOURL.String(), strings.NewReader(form.Encode()))
 	if err != nil {
 		http.Error(rw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 
@@ -174,8 +181,6 @@ func (samlSessions) GetSession(rw http.ResponseWriter, r *http.Request, req *sam
 
 	level := userSession.AuthenticationLevel(ctx.Configuration.WebAuthn.EnablePasskey2FA)
 
-	// A request with ForceAuthn is answered with AuthnFailed by the library, as this session provider can't
-	// authenticate the user again without a login form of its own.
 	if userSession.IsAnonymous() || !authorization.IsAuthLevelSufficient(level, samlRequiredLevel(sp)) {
 		if resumed, _ := r.Context().Value(ctxKeySAMLResumed{}).(bool); resumed {
 			ctx.GetLogger().WithField(logging.FieldUsername, userSession.Username).Error("Failed to resume a SAML authentication request as the session doesn't satisfy the authorization policy of the service provider")
@@ -199,6 +204,48 @@ func (samlSessions) GetSession(rw http.ResponseWriter, r *http.Request, req *sam
 	}
 
 	return newSAMLSession(ctx, &userSession, details, sp, level)
+}
+
+// GetForcedSession implements saml.ForceAuthnSessionProvider: a request with ForceAuthn ends the portal session and
+// sends the user to log in again, and once it is resumed it is answered for a login made after the request, as
+// Keycloak asks for the credentials again. A resumed request whose session is still older is refused, so it can't loop.
+func (p samlSessions) GetForcedSession(rw http.ResponseWriter, r *http.Request, req *saml.IdpAuthnRequest) *saml.Session {
+	ctx, ok := r.Context().Value(ctxKeySAMLAutheliaCtx{}).(*middlewares.AutheliaCtx)
+	if !ok || req.ServiceProviderMetadata == nil {
+		http.Error(rw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+
+		return nil
+	}
+
+	if created, resumed := r.Context().Value(ctxKeySAMLFlowCreatedAt{}).(time.Time); resumed {
+		userSession, err := ctx.GetSession()
+		if err == nil && !userSession.IsAnonymous() && !userSession.GetFirstFactorAuthn().Before(created.Truncate(time.Second)) {
+			return p.GetSession(rw, r, req)
+		}
+
+		ctx.GetLogger().WithField(logging.FieldUsername, userSession.Username).Error("Failed to resume a SAML authentication request with ForceAuthn as the user did not log in again")
+		http.Error(rw, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+
+		return nil
+	}
+
+	sp := ctx.Providers.SAML.ServiceProvider(req.ServiceProviderMetadata.EntityID)
+	if sp == nil {
+		http.Error(rw, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+
+		return nil
+	}
+
+	if err := ctx.DestroySession(); err != nil {
+		ctx.GetLogger().WithError(err).Error("Error occurred ending the session for a SAML authentication request with ForceAuthn")
+		http.Error(rw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+
+		return nil
+	}
+
+	samlLoginRedirect(ctx, rw, r, req, sp)
+
+	return nil
 }
 
 func samlRequiredLevel(sp *samlidp.ServiceProvider) authorization.Level {

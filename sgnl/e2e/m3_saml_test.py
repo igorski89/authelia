@@ -17,7 +17,7 @@ import time
 import urllib.parse
 import http.client
 
-from lib import BASE, ISS, Client, admin_headers, check, login, summary
+from lib import BASE, ISS, Client, admin_headers, check, forward_auth, login, summary
 
 DIR = os.environ['E2E_DIR']
 SPS = {name: 9100 + i for i, name in enumerate(['sp1', 'sp2', 'sp3', 'sp4', 'unknown'], start=1)}
@@ -255,10 +255,20 @@ check('a user outside the allowed groups gets RequestDenied, not an assertion', 
 st, _, page = send_request(user, 'unknown')
 check('an unknown service provider gets no response', st >= 400 and 'SAMLResponse' not in page, f'{st} {page[:120]}')
 
-# ForceAuthn can't be satisfied without a login form of our own, and must not loop.
-st, h, page = send_request(user, 'sp1', force=True)
-result = deliver('sp1', page) if st == 200 else {'error': f'http {st}'}
-check('ForceAuthn is refused with a status, without a loop', 'error' in result and st != 303, f'{st} {result}')
+# ForceAuthn: the portal session ends and the user logs in again, then gets the response; the login is fresh.
+forced = Client()
+forced.req('POST', '/api/firstfactor', {'username': 'sam', 'password': 'a-long-password-5'})
+check('ForceAuthn setup: logged in', forward_auth(forced) == 200)
+time.sleep(1.1)
+st, h, _ = send_request(forced, 'sp1', force=True)
+fid_forced = flow_id(h.get('Location', ''))
+check('ForceAuthn sends a logged in user to the portal to log in again', st == 303 and fid_forced, f'{st} {h.get("Location")}')
+check('ForceAuthn ended the portal session', forward_auth(forced) != 200)
+st, _, b = forced.req('POST', '/api/firstfactor', {'username': 'sam', 'password': 'a-long-password-5', 'flow': 'saml', 'flowID': fid_forced})
+resume = json.loads(b).get('data', {}).get('redirect', '')
+st, _, page = forced.req('GET', idp_path(resume))
+result = deliver('sp1', page)
+check('after the fresh login the ForceAuthn request is answered', result.get('name_id') == 'sam.new@example.com', result)
 
 # A disabled user with a live session gets nothing.
 api.req('PATCH', '/api/admin/users/sam', {'disabled': True}, A)
