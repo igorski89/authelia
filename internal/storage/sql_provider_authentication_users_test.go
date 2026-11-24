@@ -446,7 +446,7 @@ func TestSQLProviderAuthenticationUserConcurrentChange(t *testing.T) {
 	})
 	assert.ErrorIs(t, err, ErrNoAuthenticationUser)
 
-		// An update without a concurrent change, also one which writes the same values, is made.
+	// An update without a concurrent change, also one which writes the same values, is made.
 	require.NoError(t, provider.UpdateAuthenticationUserDisabled(ctx, "raced", true))
 	require.NoError(t, provider.UpdateAuthenticationUserDisabled(ctx, "raced", true))
 }
