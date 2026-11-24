@@ -76,6 +76,10 @@ Planned work that isn't started yet.
 
 - **SAML `ForceAuthn` interstitial** (see the M4 delta reviews): ask before ending the portal session for a forced
   login, so another site can't end it; or a per-service-provider `force_authn` option.
+- **After M5, Keycloak paths:** unknown paths below the issuer, such as Keycloak's `/protocol/openid-connect/certs` or a
+  path-inserted `/.well-known/oauth-authorization-server/realms/<realm>`, get the portal's HTML with 200, which hides
+  configuration mistakes (Stalwart parsed it as its JWKS at the cutover); answer a JSON 404, and possibly serve Keycloak's
+  OpenID Connect 1.0 paths when Keycloak compatibility is on.
 - **After M5, log clarity:** an implicit consent which can't be granted logs "the subject is null, the consent has
   already been granted, or the consent session is a pre-configured session", but the check is `!granted && now <
   expires_at`; name an expired consent separately (cost the rehearsal an hour, 2026-11-24).
