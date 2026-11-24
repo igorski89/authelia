@@ -1579,6 +1579,7 @@ func validateOIDCClientTokenExchange(c int, config *schema.IdentityProvidersOpen
 
 	validateOIDCClientTokenExchangeOptions(c, config, validator, te)
 	validateOIDCClientTokenExchangeClients(c, config, validator, attrOIDCSubjectTokenClientsSupported, config.Clients[c].SubjectTokenClientsSupported)
+	validateOIDCClientTokenExchangeExclusions(c, config, validator, te)
 
 	if !te {
 		return

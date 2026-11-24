@@ -75,11 +75,58 @@ identity_providers:
       custom:
         short:
           access_token: '2s'
+        mcp_exchange:
+          grants:
+            token_exchange:
+              access_token: '5m'
     default_claims_policy: 'app_groups'
     claims_policies:
       app_groups:
         id_token: ['email', 'email_verified', 'name', 'preferred_username', 'groups']
+      mcp:
+        id_token: ['email', 'email_verified', 'name', 'preferred_username', 'groups']
+        access_token: ['email', 'email_verified', 'name', 'preferred_username', 'groups']
+    token_exchange:
+      token_types: ['urn:ietf:params:oauth:token-type:access_token']
+      default_requested_token_type: 'urn:ietf:params:oauth:token-type:access_token'
     clients:
+      - client_id: 'mcp-login'
+        public: true
+        authorization_policy: 'one_factor'
+        redirect_uris: ['http://127.0.0.1:47621/callback']
+        scopes: ['openid', 'profile', 'email', 'groups']
+        response_types: ['code']
+        grant_types: ['authorization_code']
+        pkce_challenge_method: 'S256'
+        token_endpoint_auth_method: 'none'
+        audience: ['mcp-gateway']
+        requested_audience_mode: 'implicit'
+        access_token_signed_response_alg: 'RS256'
+        claims_policy: 'mcp'
+        subject_token_clients_supported: ['mcp-gateway']
+      - client_id: 'mcp-gateway'
+        client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
+        authorization_policy: 'one_factor'
+        consent_mode: 'implicit'
+        token_endpoint_auth_method: 'client_secret_basic'
+        scopes: ['openid', 'profile', 'email', 'groups']
+        grant_types: ['urn:ietf:params:oauth:grant-type:token-exchange']
+        subject_token_types_supported: ['urn:ietf:params:oauth:token-type:access_token']
+        request_token_types_supported: ['urn:ietf:params:oauth:token-type:access_token']
+        impersonation_allowed: true
+        access_token_signed_response_alg: 'RS256'
+        audience: ['mcp-gateway', 'stalwart']
+        claims_policy: 'mcp'
+        lifespan: 'mcp_exchange'
+      - client_id: 'not-permitted'
+        client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
+        authorization_policy: 'one_factor'
+        consent_mode: 'implicit'
+        token_endpoint_auth_method: 'client_secret_basic'
+        scopes: ['openid']
+        grant_types: ['urn:ietf:params:oauth:grant-type:token-exchange']
+        impersonation_allowed: true
+        audience: ['not-permitted']
       - client_id: 'app'
         client_secret: '$pbkdf2-sha512$310000$c8p78n7pUMln0jzvd4aK4Q$JNRBzwAo0ek5qKn50cFzzvE9RXV88h1wJn5KGiHrD0YKtZaR/nCb2CJPOsKaPK0hjf.9yHxzQGZziziccp6Yng'
         redirect_uris: ['https://app.example.com/cb']

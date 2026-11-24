@@ -13,6 +13,7 @@ import (
 
 	"github.com/authelia/authelia/v4/internal/configuration/schema"
 	"github.com/authelia/authelia/v4/internal/oidc"
+	"github.com/authelia/authelia/v4/internal/utils"
 )
 
 // TestValidateOIDCTokenExchangePublicSubjectClient checks a public client may permit a confidential client to exchange
@@ -102,5 +103,36 @@ func TestValidateKeysTokenExchangeUnsupported(t *testing.T) {
 
 	for i, key := range keys {
 		assert.EqualError(t, validator.Errors()[i], "configuration key not expected: "+key)
+	}
+}
+
+func TestValidateOIDCClientTokenExchangeExclusions(t *testing.T) {
+	testCases := []struct {
+		name     string
+		grants   []string
+		scopes   []string
+		expected []string
+	}{
+		{"ShouldAllowPlainExchange", []string{oidc.GrantTypeTokenExchange}, []string{oidc.ScopeOpenID, oidc.ScopeProfile}, nil},
+		{"ShouldIgnoreClientsWithoutExchange", []string{oidc.GrantTypeAuthorizationCode, oidc.GrantTypeRefreshToken}, []string{oidc.ScopeOfflineAccess}, nil},
+		{"ShouldRefuseRefreshGrant", []string{oidc.GrantTypeTokenExchange, oidc.GrantTypeRefreshToken}, []string{oidc.ScopeOpenID}, []string{"option 'grant_types' must not contain 'refresh_token'"}},
+		{"ShouldRefuseOfflineAndPrivilegedScopes", []string{oidc.GrantTypeTokenExchange}, []string{oidc.ScopeOfflineAccess, oidc.ScopeAutheliaBearerAuthz, oidc.ScopeAutheliaAdminWrite}, []string{
+			"option 'scopes' must not contain 'offline_access'", "option 'scopes' must not contain 'authelia.bearer.authz'", "option 'scopes' must not contain 'authelia.admin.write'",
+		}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			config := &schema.IdentityProvidersOpenIDConnect{Clients: []schema.IdentityProvidersOpenIDConnectClient{{ID: "gateway", GrantTypes: tc.grants, Scopes: tc.scopes}}}
+			validator := schema.NewStructValidator()
+
+			validateOIDCClientTokenExchangeExclusions(0, config, validator, utils.IsStringInSlice(oidc.GrantTypeTokenExchange, tc.grants))
+
+			require.Len(t, validator.Errors(), len(tc.expected))
+
+			for i, expected := range tc.expected {
+				assert.Contains(t, validator.Errors()[i].Error(), expected)
+			}
+		})
 	}
 }
