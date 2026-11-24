@@ -17,6 +17,7 @@ import (
 
 	"github.com/authelia/authelia/v4/internal/management"
 	"github.com/authelia/authelia/v4/internal/middlewares"
+	"github.com/authelia/authelia/v4/internal/storage"
 )
 
 const contentTypeAdminJSON = "application/json"
@@ -139,6 +140,12 @@ func AdminUserPATCH(service *management.Service) middlewares.RequestHandler {
 			return
 		}
 
+		// An empty change would only read the user, without the read scope and without an audit entry.
+		if changes == (management.UserChanges{}) {
+			replyAdminError(ctx, fmt.Errorf("%w: the request changes nothing", management.ErrInvalid))
+			return
+		}
+
 		user, err := service.UpdateUser(adminActor(ctx), adminPathValue(ctx, "username"), changes)
 		if err != nil {
 			replyAdminError(ctx, err)
@@ -146,6 +153,13 @@ func AdminUserPATCH(service *management.Service) middlewares.RequestHandler {
 		}
 
 		logAdminChange(ctx, "Updated user", "username", user.Username)
+
+		// The changed user is only returned to a token which may read it.
+		if !ctx.BearerCanRead() {
+			ctx.SetStatusCode(fasthttp.StatusNoContent)
+
+			return
+		}
 
 		replyAdmin(ctx, fasthttp.StatusOK, user)
 	}
@@ -467,6 +481,24 @@ func replyAdmin(ctx *middlewares.AutheliaCtx, status int, body any) {
 	}
 }
 
+// adminConflictDescription describes a conflict without the details of the storage.
+func adminConflictDescription(err error) string {
+	switch {
+	case errors.Is(err, storage.ErrAuthenticationUsernameTaken):
+		return "The username is taken."
+	case errors.Is(err, storage.ErrAuthenticationUsernameDeleted):
+		return "The username belonged to a deleted user and can't be used again."
+	case errors.Is(err, storage.ErrAuthenticationEmailTaken):
+		return "The email is taken."
+	case errors.Is(err, storage.ErrAuthenticationGroupExists):
+		return "The group exists already."
+	case errors.Is(err, storage.ErrAuthenticationUserGroupExists):
+		return "The user is a member of the group already."
+	default:
+		return "The request conflicts with an existing user or group."
+	}
+}
+
 func replyAdminError(ctx *middlewares.AutheliaCtx, err error) {
 	var (
 		status int
@@ -476,10 +508,16 @@ func replyAdminError(ctx *middlewares.AutheliaCtx, err error) {
 	switch {
 	case errors.Is(err, management.ErrInvalid):
 		status, body = fasthttp.StatusBadRequest, AdminErrorResponse{Error: "invalid_request", ErrorDescription: err.Error()}
+	// The details of a missing or conflicting user or group come from the storage, such as a signature which isn't
+	// valid, so they are logged rather than returned.
 	case errors.Is(err, management.ErrNotFound):
-		status, body = fasthttp.StatusNotFound, AdminErrorResponse{Error: "not_found", ErrorDescription: err.Error()}
+		ctx.Logger.WithError(err).WithField("client_id", ctx.BearerClientID()).Debug("Administration API request for a user or group which doesn't exist")
+
+		status, body = fasthttp.StatusNotFound, AdminErrorResponse{Error: "not_found", ErrorDescription: "The user or group does not exist."}
 	case errors.Is(err, management.ErrConflict):
-		status, body = fasthttp.StatusConflict, AdminErrorResponse{Error: "conflict", ErrorDescription: err.Error()}
+		ctx.Logger.WithError(err).WithField("client_id", ctx.BearerClientID()).Debug("Administration API request conflicting with an existing user or group")
+
+		status, body = fasthttp.StatusConflict, AdminErrorResponse{Error: "conflict", ErrorDescription: adminConflictDescription(err)}
 	default:
 		ctx.Logger.WithError(err).WithField("client_id", ctx.BearerClientID()).Error("Administration API request failed")
 

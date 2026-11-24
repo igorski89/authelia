@@ -128,6 +128,9 @@ const (
 	UserValueKeyRawURI
 	UserValueRateLimitExempt
 	UserValueKeyBearerClientID
+
+	// UserValueKeyBearerCanRead is set when the Bearer Access Token was also granted the read scope of its API.
+	UserValueKeyBearerCanRead
 )
 
 // Router user value keys.

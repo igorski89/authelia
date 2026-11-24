@@ -12,6 +12,7 @@ import (
 	"net/mail"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -416,6 +417,8 @@ func TestAdminUsersAndGroupsHandlers(t *testing.T) {
 		{"ShouldDecodeEscapedUsername", AdminUserGET(service), map[string]string{"username": "ops%40example.org"}, "", "", "", http.StatusOK, `"username":"ops@example.org"`},
 		{"ShouldRefuseUnknownField", AdminUserPATCH(service), map[string]string{"username": "jane.doe"}, "", `{"displayname":"x"}`, "", http.StatusBadRequest, `unknown field`},
 		{"ShouldRefuseWrongContentType", AdminUserPATCH(service), map[string]string{"username": "jane.doe"}, "", `{"display_name":"x"}`, "text/plain", http.StatusBadRequest, `content type`},
+		{"ShouldRefuseEmptyChange", AdminUserPATCH(service), map[string]string{"username": "jane.doe"}, "", `{}`, "", http.StatusBadRequest, `changes nothing`},
+		{"ShouldNotReturnUserWriteOnly", AdminUserPATCH(service), map[string]string{"username": "jane.doe"}, "", `{"display_name":"Jane D"}`, "", http.StatusNoContent, ``},
 		{"ShouldAcceptContentTypeWithCharset", AdminUserPATCH(service), map[string]string{"username": "jane.doe"}, "", `{"display_name":"Jane","disabled":true}`, "application/json; charset=utf-8", http.StatusOK, `"disabled":true`},
 		{"ShouldRefuseEmptyPassword", AdminUserPasswordPUT(service), map[string]string{"username": "jane.doe"}, "", `{}`, "", http.StatusBadRequest, `use DELETE`},
 		{"ShouldRefusePlaintextDigest", AdminUserPasswordPUT(service), map[string]string{"username": "ops@example.org"}, "", `{"password_digest":"$plaintext$password"}`, "", http.StatusBadRequest, `not a stored password`},
@@ -442,6 +445,11 @@ func TestAdminUsersAndGroupsHandlers(t *testing.T) {
 
 			// The handlers pass the request context to a real database here, which needs the context of a server.
 			mock.Ctx.Init(&fasthttp.Request{}, nil, nil)
+
+			// The token of these steps may read, unless a step is about a write-only token.
+			if !strings.HasSuffix(st.name, "WriteOnly") {
+				mock.Ctx.SetUserValue(middlewares.UserValueKeyBearerCanRead, true)
+			}
 
 			for k, v := range st.values {
 				mock.Ctx.SetUserValue(k, v)

@@ -3424,7 +3424,9 @@ paths:
     patch:
       operationId: patchAdminUser
       summary: Update User
-      description: Changes the given fields of a user. Disabling a user refuses its logins, sessions, and tokens at once.
+      description: >
+        Changes the given fields of a user, at least one. Disabling a user refuses its logins, sessions, and tokens at
+        once. The changed user is returned when the Access Token was also granted the authelia.admin.read scope.
       tags:
         - Administration
       requestBody:
@@ -3435,11 +3437,13 @@ paths:
               $ref: '#/components/schemas/admin.UserChanges'
       responses:
         "200":
-          description: Successful Operation
+          description: Successful Operation, with the changed user
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/admin.User'
+        "204":
+          description: Successful Operation, for an Access Token without the authelia.admin.read scope
         "400":
           $ref: '#/components/responses/adminBadRequest'
         "401":

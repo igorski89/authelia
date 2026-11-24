@@ -206,7 +206,7 @@ func (samlSessions) GetSession(rw http.ResponseWriter, r *http.Request, req *sam
 		return nil
 	}
 
-	return newSAMLSession(ctx, &userSession, details, sp, level)
+	return newSAMLSession(&userSession, details, sp, level)
 }
 
 // GetForcedSession implements saml.ForceAuthnSessionProvider: a request with ForceAuthn ends the portal session and
@@ -307,7 +307,7 @@ func samlLoginRedirect(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *
 	http.Redirect(rw, r, location.String(), http.StatusSeeOther) //nolint:gosec // See above.
 }
 
-func newSAMLSession(ctx *middlewares.AutheliaCtx, userSession *session.UserSession, details *authentication.UserDetailsExtended, sp *samlidp.ServiceProvider, level authentication.Level) *saml.Session {
+func newSAMLSession(userSession *session.UserSession, details *authentication.UserDetailsExtended, sp *samlidp.ServiceProvider, level authentication.Level) *saml.Session {
 	// The session index is derived from the public identifier, never from the session identifier itself.
 	index := sha256.Sum256([]byte("authelia:saml:session-index:" + userSession.PublicID))
 

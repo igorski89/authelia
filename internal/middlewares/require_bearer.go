@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"net/url"
+	"slices"
 
 	"github.com/valyala/fasthttp"
 
@@ -99,20 +100,44 @@ func bearerClientCredentials(ctx *AutheliaCtx, path, scope string) (clientID str
 		return clientID, errBearerTokenInvalid.WithHint("The client the Access Token was issued to is no longer registered.")
 	}
 
-	if !client.GetScopes().Has(scope) || !requester.GetGrantedScopes().Has(scope) {
+	if !bearerScopeGranted(requester, client, scope) {
 		return clientID, oauthelia2.ErrInsufficientScope.WithHintf("The Access Token was not granted the '%s' scope.", scope)
 	}
 
-	audience := []string{issuer.JoinPath(path).String()}
+	audience := issuer.JoinPath(path).String()
 
-	strategyAudience, strategyResource := oauthelia2.GetAudienceStrategy(ctx, ctx.Providers.OpenIDConnect, client), oauthelia2.GetResourceStrategy(ctx, ctx.Providers.OpenIDConnect, client)
+	if !bearerAudienceGranted(requester, client, audience) {
+		return clientID, errBearerTokenInvalid.WithHintf("The Access Token was not issued for the audience '%s'.", audience)
+	}
 
-	if !oidc.AudienceMatchesRequester(strategyAudience, strategyResource, requester, audience) ||
-		!oidc.AudienceMatchesGrantedAudienceOrResource(strategyAudience, client.GetAudience(), strategyResource, client.GetResource(), audience) {
-		return clientID, errBearerTokenInvalid.WithHintf("The Access Token was not issued for the audience '%s'.", audience[0])
+	if bearerScopeGranted(requester, client, oidc.ScopeAutheliaAdminRead) {
+		ctx.SetUserValue(UserValueKeyBearerCanRead, true)
 	}
 
 	return clientID, nil
+}
+
+// bearerScopeGranted returns true if the scope was granted to the token and the client still holds it.
+func bearerScopeGranted(requester oauthelia2.AccessRequester, client oidc.Client, scope string) bool {
+	return client.GetScopes().Has(scope) && requester.GetGrantedScopes().Has(scope)
+}
+
+// bearerAudienceGranted returns true if the audience was granted to the token and registered for the client exactly,
+// not matched by a prefix or wildcard audience or resource strategy of the client: only a token issued for this API
+// may use it.
+func bearerAudienceGranted(requester oauthelia2.AccessRequester, client oidc.Client, audience string) bool {
+	granted := slices.Contains(requester.GetGrantedAudience(), audience) || slices.Contains(requester.GetGrantedResource(), audience)
+	registered := slices.Contains(client.GetAudience(), audience) || slices.Contains(client.GetResource(), audience)
+
+	return granted && registered
+}
+
+// BearerCanRead returns true if the Access Token stored by [RequireBearerClientCredentials] may also read, so a change
+// may answer with what it changed.
+func (ctx *AutheliaCtx) BearerCanRead() bool {
+	canRead, _ := ctx.UserValue(UserValueKeyBearerCanRead).(bool)
+
+	return canRead
 }
 
 func bearerTokenFromHeader(value []byte) (token string, ok bool) {
