@@ -190,6 +190,17 @@ form = dict(start['form'], RelayState='x' * 1024)
 st, h, _ = Client().req('POST', idp_path(start['url']), form, form=True)
 check('a RelayState of 1 KB is accepted', st == 303, st)
 
+# The library also takes a request in the SAMLRedirectQuery field of a POST: its RelayState is bounded too, and nothing
+# that large is stored.
+redirect = sp('sp1', 'GET', '/start?binding=redirect')['url']
+query = urllib.parse.parse_qs(urllib.parse.urlparse(redirect).query)
+inner = urllib.parse.urlencode({'SAMLRequest': query['SAMLRequest'][0], 'RelayState': 'x' * (3 * 1024 * 1024)})
+st, _, _ = Client().req('POST', idp_path(redirect.split('?')[0]), {'SAMLRedirectQuery': inner}, form=True)
+db = sqlite3.connect(os.path.join(DIR, 'db.sqlite3'))
+largest = db.execute('SELECT COALESCE(MAX(LENGTH(form)), 0) FROM saml_flows').fetchone()[0]
+db.close()
+check('a 3 MB RelayState in SAMLRedirectQuery is refused and not stored', st in (400, 413) and largest < 32 * 1024, f'{st} {largest}')
+
 # A logged in user gets the response at once, with the HTTP-POST binding and at Keycloak's path.
 st, _, page = send_request(user, 'sp1', binding='post')
 result = deliver('sp1', page)

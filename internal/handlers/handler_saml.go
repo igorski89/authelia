@@ -71,8 +71,15 @@ func SAMLSSO(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// A pending request is kept for each anonymous request, so its size is bounded before anything else.
-	if err := r.ParseForm(); err != nil || len(r.Form.Get("SAMLRequest")) > samlidp.MaxRequestLength || len(r.Form.Get("RelayState")) > samlidp.MaxRelayStateLength {
+	// A pending request is kept for each anonymous request, so its size is bounded before anything else: the body, as
+	// the form is only parsed once, and every field the library takes a request from, including the SAMLRedirectQuery
+	// of an HTTP-POST, which carries a request of the HTTP-Redirect binding.
+	if r.Body != nil {
+		r.Body = http.MaxBytesReader(rw, r.Body, samlidp.MaxBodyLength)
+	}
+
+	if err := r.ParseForm(); err != nil || len(r.Form.Get("SAMLRequest")) > samlidp.MaxRequestLength || len(r.Form.Get("RelayState")) > samlidp.MaxRelayStateLength ||
+		len(r.Form.Get("SAMLRedirectQuery")) > samlidp.MaxRequestLength+samlidp.MaxRelayStateLength+1024 {
 		ctx.GetLogger().WithError(err).Error("Error occurred handling a SAML authentication request: the request or its RelayState is too long")
 		http.Error(rw, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 
@@ -268,6 +275,14 @@ func samlLoginRedirect(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter, r *
 	form, err := json.Marshal(req.ResumeFormValues())
 	if err != nil {
 		http.Error(rw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+
+		return
+	}
+
+	// Whichever binding or field the request came in, what is kept is bounded.
+	if len(req.RelayState) > samlidp.MaxRelayStateLength || len(form) > samlidp.MaxStoredRequestLength {
+		ctx.GetLogger().Error("Error occurred keeping a SAML authentication request: the request or its RelayState is too long")
+		http.Error(rw, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 
 		return
 	}

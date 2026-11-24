@@ -54,6 +54,13 @@ const (
 
 	// MaxRequestLength is the longest encoded SAMLRequest accepted.
 	MaxRequestLength = 16 * 1024
+
+	// MaxBodyLength is the largest body of a single sign-on request, as the library allows.
+	MaxBodyLength = 128 * 1024
+
+	// MaxStoredRequestLength is the largest pending request kept while the user logs in: the request, the RelayState,
+	// and the signature of the HTTP-Redirect binding, encoded.
+	MaxStoredRequestLength = 24 * 1024
 )
 
 // Provider is the SAML 2.0 identity provider.
