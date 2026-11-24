@@ -150,8 +150,17 @@ func OpenIDConnectUserinfo(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter,
 	if detailer, err = oidc.UserDetailerFromClaims(ctx, original); err == nil && userinfo {
 		var revoked bool
 
-		// A token from a login before the user was logged out of the client gets no claims.
-		if revoked, err = middlewares.IsUserRevoked(ctx, ctx.Providers.StorageProvider, detailer.GetUsername(), client.GetID(), requested); err == nil && revoked {
+		// A token of a grant authorized before the user was logged out of the client gets no claims, and none are given
+		// when that can't be checked.
+		if revoked, err = middlewares.IsUserRevoked(ctx, ctx.Providers.StorageProvider, detailer.GetUsername(), client.GetID(), requested, middlewares.RevocationResolutionGrant); err != nil {
+			ctx.GetLogger().WithError(err).Errorf("User Info Request with id '%s' on client with id '%s' could not check the revocation of the token", requestID, client.GetID())
+
+			errorsx.WriteJSONError(rw, r, oauthelia2.ErrServerError.WithDebugf("Error occurred checking the revocation of the token: %v.", err))
+
+			return
+		}
+
+		if revoked {
 			ctx.GetLogger().Infof("User Info Request with id '%s' on client with id '%s' was refused as the token was revoked since the user logged in", requestID, client.GetID())
 
 			errorsx.WriteRFC6750Error(rw, oauthelia2.ErrRequestUnauthorized.WithHint("The Access Token was revoked since the user logged in."), nil)

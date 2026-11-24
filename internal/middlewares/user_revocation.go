@@ -23,11 +23,11 @@ type requestValues interface {
 	SetUserValue(key any, value any)
 }
 
-// IsUserRevoked returns true if a login of the user at authTime, for a client or for the portal when clientID is empty,
-// was revoked since: everything a user is logged in with is revoked by a logout, a disable, or a delete, and the mark
+// IsUserRevoked returns true if something of the user which started at the time, with the resolution of that time (see
+// model.UserRevocation.Revokes), for a client or for the portal when clientID is empty, was revoked since: everything a user is logged in with is revoked by a logout, a disable, or a delete, and the mark
 // also refuses a session or grant which a request already running saved after the revocation. The marks are loaded once
 // per request when ctx keeps request values.
-func IsUserRevoked(ctx context.Context, store storage.Provider, username, clientID string, authTime time.Time) (revoked bool, err error) {
+func IsUserRevoked(ctx context.Context, store storage.Provider, username, clientID string, at time.Time, resolution time.Duration) (revoked bool, err error) {
 	if store == nil || username == "" {
 		return false, nil
 	}
@@ -55,10 +55,19 @@ func IsUserRevoked(ctx context.Context, store storage.Provider, username, client
 	}
 
 	for _, revocation := range revocations {
-		if revocation.Revokes(clientID, authTime) {
+		if revocation.Revokes(clientID, at, resolution) {
 			return true, nil
 		}
 	}
 
 	return false, nil
 }
+
+// Resolutions of the times compared with the revocation marks.
+const (
+	// RevocationResolutionLogin is the resolution of the login time of a portal session.
+	RevocationResolutionLogin = time.Second
+
+	// RevocationResolutionGrant is the resolution of the time of an OAuth 2.0 authorization request, which is exact.
+	RevocationResolutionGrant time.Duration = 0
+)

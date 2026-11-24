@@ -19,12 +19,13 @@ type UserRevocation struct {
 }
 
 // Revokes returns true if the mark revokes something which started at the time for the client, which is empty for a
-// portal session: a portal session's login, or an OAuth 2.0 grant's authorization request. The login times have a
-// resolution of a second, so a time in the same second as the revocation is taken as after it.
-func (r UserRevocation) Revokes(clientID string, authTime time.Time) bool {
+// portal session: a portal session's login, or an OAuth 2.0 grant's authorization request. The resolution is the one of
+// the time: a portal session's login time has a resolution of a second, so a login in the same second as the revocation
+// is taken as after it; an authorization request's time is exact, so its resolution is zero.
+func (r UserRevocation) Revokes(clientID string, at time.Time, resolution time.Duration) bool {
 	if r.ClientID != "" && r.ClientID != clientID {
 		return false
 	}
 
-	return authTime.Before(r.RevokedAt.Truncate(time.Second))
+	return at.Before(r.RevokedAt.Truncate(resolution))
 }

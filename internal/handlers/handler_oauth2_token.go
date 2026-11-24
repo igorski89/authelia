@@ -127,7 +127,7 @@ func handleOAuth2TokenUserPermitted(ctx *middlewares.AutheliaCtx, rw http.Respon
 		// A grant authorized before the user was logged out of the client is over, also when a request which was
 		// already running issued it after the revocation. The time of the authorization request is compared, not the
 		// time of the login: after a logout of one client the portal session stays and may authorize it again.
-		revoked, err = middlewares.IsUserRevoked(ctx, ctx.Providers.StorageProvider, detailer.GetUsername(), client.GetID(), session.GetRequestedAt())
+		revoked, err = middlewares.IsUserRevoked(ctx, ctx.Providers.StorageProvider, detailer.GetUsername(), client.GetID(), session.GetRequestedAt(), middlewares.RevocationResolutionGrant)
 	}
 
 	switch {

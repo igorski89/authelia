@@ -150,7 +150,7 @@ func (s *CookieSessionAuthnStrategy) Get(ctx AuthzContext, manager session.Manag
 			// A session from a login before its user was logged out is over, also when a request which was already
 			// running saved it again after the logout destroyed it.
 			if !userSession.IsAnonymous() {
-				if revoked, err = middlewares.IsUserRevoked(ctx, ctx.GetProviders().StorageProvider, userSession.Username, "", userSession.GetFirstFactorAuthn()); err != nil {
+				if revoked, err = middlewares.IsUserRevoked(ctx, ctx.GetProviders().StorageProvider, userSession.Username, "", userSession.GetFirstFactorAuthn(), middlewares.RevocationResolutionLogin); err != nil {
 					return authn, fmt.Errorf("failed to check the revocation of the session: %w", err)
 				}
 			}
@@ -720,6 +720,10 @@ func handleVerifyGETAuthorizationBearerIntrospection(ctx context.Context, provid
 		return "", osession.ClientID, true, authentication.OneFactor, nil
 	}
 
+	if err = authzBearerRevoked(ctx, osession); err != nil {
+		return "", "", false, authentication.NotAuthenticated, err
+	}
+
 	if authorization.NewAuthenticationMethodsReferencesFromClaim(osession.DefaultSession.Claims.AuthenticationMethodsReferences).MultiFactorAuthentication() {
 		level = authentication.TwoFactor
 	} else {
@@ -727,6 +731,28 @@ func handleVerifyGETAuthorizationBearerIntrospection(ctx context.Context, provid
 	}
 
 	return osession.Username, "", false, level, nil
+}
+
+// authzBearerRevoked returns an error if the token of a user is of a grant authorized before its user was logged out of
+// the client, also when a refresh which was already running issued it after the revocation. A context without the
+// providers can't be checked.
+func authzBearerRevoked(ctx context.Context, osession *oidc.Session) (err error) {
+	providers, ok := ctx.(interface{ GetProviders() middlewares.Providers })
+	if !ok {
+		return nil
+	}
+
+	var revoked bool
+
+	if revoked, err = middlewares.IsUserRevoked(ctx, providers.GetProviders().StorageProvider, osession.Username, osession.ClientID, osession.GetRequestedAt(), middlewares.RevocationResolutionGrant); err != nil {
+		return fmt.Errorf("error checking the revocation of the token: %w", err)
+	}
+
+	if revoked {
+		return fmt.Errorf("the token was revoked since its grant was authorized")
+	}
+
+	return nil
 }
 
 func authzBearerTarget(object *authorization.Object) (target string) {

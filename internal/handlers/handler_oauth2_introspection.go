@@ -109,7 +109,7 @@ func handleOAuth2IntrospectionUserPermitted(ctx *middlewares.AutheliaCtx, reques
 			clientID = client.GetID()
 		}
 
-		if revoked, err = middlewares.IsUserRevoked(ctx, ctx.Providers.StorageProvider, detailer.GetUsername(), clientID, session.GetRequestedAt()); err == nil && revoked {
+		if revoked, err = middlewares.IsUserRevoked(ctx, ctx.Providers.StorageProvider, detailer.GetUsername(), clientID, session.GetRequestedAt(), middlewares.RevocationResolutionGrant); err == nil && revoked {
 			ctx.GetLogger().WithField("subject", session.Subject).Infof("Introspection Request with id '%s' yielded an inactive token as it was revoked since the user logged in", requestID)
 
 			response.Active = false

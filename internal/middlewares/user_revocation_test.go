@@ -26,15 +26,15 @@ func TestIsUserRevokedLoadsMarksOncePerRequest(t *testing.T) {
 
 	ctx := &fasthttp.RequestCtx{}
 
-	revoked, err := middlewares.IsUserRevoked(ctx, store, "john", "", at.Add(-time.Minute))
+	revoked, err := middlewares.IsUserRevoked(ctx, store, "john", "", at.Add(-time.Minute), middlewares.RevocationResolutionLogin)
 	require.NoError(t, err)
 	assert.True(t, revoked)
 
-	revoked, err = middlewares.IsUserRevoked(ctx, store, "john", "app", at.Add(time.Minute))
+	revoked, err = middlewares.IsUserRevoked(ctx, store, "john", "app", at.Add(time.Minute), middlewares.RevocationResolutionGrant)
 	require.NoError(t, err)
 	assert.False(t, revoked)
 
-	revoked, err = middlewares.IsUserRevoked(ctx, store, "", "", at)
+	revoked, err = middlewares.IsUserRevoked(ctx, store, "", "", at, middlewares.RevocationResolutionLogin)
 	require.NoError(t, err)
 	assert.False(t, revoked, "an anonymous session has no user to revoke")
 }
