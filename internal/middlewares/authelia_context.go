@@ -422,27 +422,35 @@ func (ctx *AutheliaCtx) GetSession() (userSession session.UserSession, err error
 		return provider.NewDefault(), nil
 	}
 
-	// A session from a login before its user was logged out, disabled, or deleted is over, also when a request which was
-	// already running saved it again after the revocation destroyed it.
-	if !current.IsAnonymous() {
-		var revoked bool
+	return ctx.SessionUnlessRevoked(provider, current)
+}
 
-		if revoked, err = IsUserRevoked(ctx, ctx.Providers.StorageProvider, current.Username, "", current.GetFirstFactorAuthn()); err != nil {
-			return userSession, err
-		}
-
-		if revoked {
-			ctx.Logger.WithField("username", current.Username).Info("The session of the user was revoked since it was created and is destroyed")
-
-			if err = provider.Destroy(ctx); err != nil {
-				ctx.Logger.WithError(err).Error("Unable to destroy a revoked user session")
-			}
-
-			return provider.NewDefault(), nil
-		}
+// SessionUnlessRevoked returns the session loaded from the provider, or a new anonymous session when it is from a login
+// before its user was logged out, disabled, or deleted: such a session is over, also when a request which was already
+// running saved it again after the revocation destroyed it, and it is destroyed. Every handler which loads the session
+// from the provider itself rather than with GetSession uses it.
+func (ctx *AutheliaCtx) SessionUnlessRevoked(provider session.Strategy, current *session.UserSession) (userSession session.UserSession, err error) {
+	if current.IsAnonymous() {
+		return *current, nil
 	}
 
-	return *current, nil
+	var revoked bool
+
+	if revoked, err = IsUserRevoked(ctx, ctx.Providers.StorageProvider, current.Username, "", current.GetFirstFactorAuthn(), RevocationResolutionLogin); err != nil {
+		return userSession, err
+	}
+
+	if !revoked {
+		return *current, nil
+	}
+
+	ctx.Logger.WithField("username", current.Username).Info("The session of the user was revoked since it was created and is destroyed")
+
+	if err = provider.Destroy(ctx); err != nil {
+		ctx.Logger.WithError(err).Error("Unable to destroy a revoked user session")
+	}
+
+	return provider.NewDefault(), nil
 }
 
 // SaveSession saves the content of the session.

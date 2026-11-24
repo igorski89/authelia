@@ -6,7 +6,9 @@
 saves after a logout are refused. The race is reproduced by restoring the rows the logout ended."""
 
 import os
+import secrets
 import sqlite3
+import urllib.parse
 import sys
 import time
 
@@ -41,6 +43,12 @@ restored = db.execute("SELECT COUNT(*) FROM session WHERE username = 'racer'").f
 db.close()
 
 check('the race is reproduced: the session row is back', restored == len(sessions) and restored > 0, restored)
+
+# The authorization endpoint loads the session itself: a restored session must not authorize a client.
+query = urllib.parse.urlencode({'client_id': 'test', 'response_type': 'code', 'scope': 'openid', 'redirect_uri': 'https://app.example.com/cb',
+                                'state': secrets.token_hex(12), 'nonce': secrets.token_hex(12)})
+_, headers, _ = user.req('GET', '/api/oidc/authorization?' + query)
+check('a portal session saved after the logout authorizes no client', 'code=' not in headers.get('Location', ''), headers.get('Location'))
 check('a portal session saved after the logout is refused (forward auth)', forward_auth(user) != 200)
 check('a refresh token from before the logout is refused', refresh('app', tokens['refresh_token']) != 200)
 check('an access token from before the logout is inactive', introspect('app', tokens['access_token']) is False)

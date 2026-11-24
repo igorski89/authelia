@@ -121,7 +121,13 @@ func OAuth2AuthorizationGET(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter
 		return
 	}
 
-	userSession = *current
+	if userSession, err = ctx.SessionUnlessRevoked(provider, current); err != nil {
+		ctx.GetLogger().Errorf("Authorization Request with id '%s' on client with id '%s' using policy '%s' could not be processed: error occurred checking the revocation of the session: %+v", requester.GetID(), client.GetID(), policy.Name, err)
+
+		ctx.Providers.OpenIDConnect.WriteAuthorizeError(ctx, rw, requester, oauthelia2.ErrServerError.WithHint("Could not obtain the user session."))
+
+		return
+	}
 
 	var details authentication.UserDetailsExtended
 
