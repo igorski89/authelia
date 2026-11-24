@@ -32,6 +32,11 @@ func TestAuthnContextEnforcer(t *testing.T) {
 		{"PPTSessionMFAMinimum", ppt, AuthnContextRefedsMFA, saml.AuthnContextComparisonMinimum, false},
 		{"PPTSessionMFAExact", ppt, AuthnContextRefedsMFA, saml.AuthnContextComparisonExact, false},
 		{"DefaultClassIsPPT", &saml.Session{}, AuthnContextRefedsMFA, saml.AuthnContextComparisonMinimum, false},
+		{"PPTSessionMobileTwoFactor", ppt, "urn:oasis:names:tc:SAML:2.0:ac:classes:MobileTwoFactorContract", saml.AuthnContextComparisonExact, false},
+		{"PPTSessionMicrosoftMultipleAuthn", ppt, "http://schemas.microsoft.com/claims/multipleauthn", "", false},
+		{"MFASessionSmartcard", mfa, "urn:oasis:names:tc:SAML:2.0:ac:classes:Smartcard", saml.AuthnContextComparisonMinimum, true},
+		{"PPTSessionBetterThanPPT", ppt, AuthnContextPasswordProtectedTransport, saml.AuthnContextComparisonBetter, false},
+		{"MFASessionBetterThanPPT", mfa, AuthnContextPasswordProtectedTransport, saml.AuthnContextComparisonBetter, true},
 	}
 
 	for _, tc := range testCases {

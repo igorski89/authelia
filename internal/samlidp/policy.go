@@ -142,16 +142,25 @@ const (
 	AuthnContextRefedsMFA                  = "https://refeds.org/profile/mfa"
 )
 
+// authnContextStrength ranks the classes a service provider may request: the password classes, and the classes which
+// stand for more than one factor, which only a two factor session satisfies.
 var authnContextStrength = map[string]int{
 	AuthnContextPassword:                   1,
 	AuthnContextPasswordProtectedTransport: 2,
 	AuthnContextRefedsMFA:                  3,
+	"urn:oasis:names:tc:SAML:2.0:ac:classes:MobileTwoFactorContract":     3,
+	"urn:oasis:names:tc:SAML:2.0:ac:classes:MobileTwoFactorUnregistered": 3,
+	"urn:oasis:names:tc:SAML:2.0:ac:classes:Smartcard":                   3,
+	"urn:oasis:names:tc:SAML:2.0:ac:classes:SmartcardPKI":                3,
+	"urn:oasis:names:tc:SAML:2.0:ac:classes:TimeSyncToken":               3,
+	"http://schemas.microsoft.com/claims/multipleauthn":                  3,
 }
 
-// authnContextEnforcer refuses a request only when the session is weaker than every class it requests, whatever the
-// comparison: a session at least as strong as a requested class, or a class it can't rank, is answered, as Keycloak
-// answers requests without enforcing the requested context. A service provider which asks for PasswordProtectedTransport
-// exactly then still gets the assertion of a two factor session, which states the stronger class it really has.
+// authnContextEnforcer refuses a request only when the session is weaker than every class it requests: a session at
+// least as strong as a requested class (stronger with the better comparison), or a class it can't rank, is answered,
+// as Keycloak answers requests without enforcing the requested context. A service provider which asks for
+// PasswordProtectedTransport exactly then still gets the assertion of a two factor session, which states the stronger
+// class it really has.
 type authnContextEnforcer struct{}
 
 // SatisfiesAuthnContext implements saml.AuthnContextEnforcer.
@@ -165,12 +174,20 @@ func (authnContextEnforcer) SatisfiesAuthnContext(requested *saml.RequestedAuthn
 		asserted = AuthnContextPasswordProtectedTransport
 	}
 
+	better := requested.Comparison == saml.AuthnContextComparisonBetter
+
 	for _, class := range requested.AuthnContextClassRefs {
 		strength, known := authnContextStrength[class]
-		if !known || authnContextStrength[asserted] >= strength {
+
+		switch {
+		case !known:
+			return nil
+		case better && authnContextStrength[asserted] > strength:
+			return nil
+		case !better && authnContextStrength[asserted] >= strength:
 			return nil
 		}
 	}
 
-	return fmt.Errorf("the authentication of the session (%s) is weaker than every requested class", asserted)
+	return fmt.Errorf("the authentication of the session (%s) doesn't satisfy any requested class", asserted)
 }
