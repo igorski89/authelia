@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 ---
-# Merges upstream master into sgnl inside the runner (never pushed) and runs the full fork CI on the result,
+# Merges upstream master into the fork's master inside the runner (never pushed) and runs the full fork CI on the result,
 # so upstream drift and merge conflicts show up daily instead of at the weekly sync.
 name: 'SGNL upstream drift (nightly)'
 

@@ -6,15 +6,17 @@ SPDX-License-Identifier: Apache-2.0
 
 # SGNL's Authelia fork
 
-This is a fork of [authelia/authelia](https://github.com/authelia/authelia), branch `sgnl`, kept in sync with upstream
+This is a fork of [authelia/authelia](https://github.com/authelia/authelia), branch `master`, kept in sync with upstream
 `master`. It adds what SGNL needs to run its login on Authelia alone: users in the database, an admin API, invite onboarding,
 revocation, and a SAML IdP. **Not affiliated with or endorsed by the Authelia project.** For Authelia itself, use
 upstream.
 
 Branches:
 
-- `sgnl`: the fork (default branch). Releases are tagged `v<upstream version>-sgnl.<n>`.
-- `master`: an untouched mirror of upstream `master`, or absent. Never commit to it.
+- `master`: the fork (default branch), the production line. Releases are tagged `v<upstream version>-sgnl.<n>`.
+  Until 2026-11-24 the fork lived on a branch `sgnl` and `master` mirrored upstream; `master` was fast-forwarded to
+  `sgnl` (igor, 2026-11-24) and `sgnl` removed. Upstream is merged from the `upstream` remote, never mirrored.
+- `sgnl-*`: work branches (CI runs on them), merged into `master` when reviewed.
 
 ## Principles
 
@@ -39,7 +41,7 @@ Decided by igor on 2026-11-23. They replace the earlier "thin seams" approach.
      work on production, no rollback. The freeze is over; M6 (removing Keycloak) is SGNL's, from 2026-12-08.
      `sgnl.12` (2026-11-24, on production the same day; igor skipped the test instance) adds RFC 8693 token exchange for
      the MCP gateway with the security reviews' fixes; no migration, rollback is pinning `sgnl.11`. Branch `sgnl-mcp` was
-     merged into `sgnl` (fast-forward), so `sgnl` is the production line again, and production changes follow the
+     merged into `sgnl` (fast-forward), so `sgnl` (now `master`) is the production line again, and production changes follow the
      freeze rules (reviews clean before tagging, announced to igor and sgnl-01).
 3. **Kept in sync with upstream `master`**: merged by hand from time to time (igor, 2026-11-23). Syncs will conflict
    more often than with a thin fork; that cost is accepted. When upstream ships an equivalent feature, we compare the
@@ -105,7 +107,7 @@ Planned work that isn't started yet.
   then manages users and groups with the CLI on both (`sgnl/ci-storage-engines.sh`; upstream's unit tests only execute
   the SQLite SQL). It also runs the end-to-end tests (`sgnl/e2e/run.sh`) against a live instance. It also builds the linux/amd64 image. It mirrors what upstream's Buildkite pipeline runs
   (`authelia-scripts ci`, `.buildkite/steps/lint.sh`).
-- Nightly drift check: `.github/workflows/sgnl-upstream-nightly.yml` merges upstream `master` into `sgnl` inside the
+- Nightly drift check: `.github/workflows/sgnl-upstream-nightly.yml` merges upstream `master` into the fork's `master` inside the
   runner (never pushed) and runs the same CI. A red run means the next sync has work.
 - Releases: pushing a tag `v<version>-sgnl.<n>` runs `.github/workflows/sgnl-release.yml`, which runs the CI and then
   publishes the image to `ghcr.io/igorski89/authelia:<tag>` (public, igor 2026-11-23) for linux/amd64 and linux/arm64
@@ -128,7 +130,7 @@ Planned work that isn't started yet.
 
 ## Sync log
 
-Merge upstream `master` into `sgnl` by hand from time to time (igor, 2026-11-23). Merge, don't rebase. The nightly
+Merge upstream `master` into the fork's `master` by hand from time to time (igor, 2026-11-23). Merge, don't rebase. The nightly
 drift check only reports whether the next merge would pass; it never pushes.
 
 | Date | Upstream commit | Result | Notes |

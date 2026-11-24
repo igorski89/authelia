@@ -8,11 +8,11 @@ name: 'SGNL CI'
 on:
   push:
     branches:
-      - 'sgnl'
+      - 'master'
       - 'sgnl-*'
   pull_request:
     branches:
-      - 'sgnl'
+      - 'master'
   workflow_dispatch: {}
   workflow_call:
     inputs:
