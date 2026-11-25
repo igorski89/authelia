@@ -134,6 +134,18 @@ func TestClientIDMetadataDocumentsFilter(t *testing.T) {
 			"",
 		},
 		{
+			"ShouldDropLocalhostWithUserinfo",
+			metadata("https://loopback.example/c.json", "native", "http://127.0.0.1/callback", "http://user@localhost/callback"),
+			[]string{"http://127.0.0.1/callback"},
+			"",
+		},
+		{
+			"ShouldNotDropOtherLocalhostSpellings",
+			metadata("https://loopback.example/c.json", "native", "http://127.0.0.1/callback", "http://localhost./callback", "http://app.localhost/callback"),
+			[]string{"http://127.0.0.1/callback", "http://localhost./callback", "http://app.localhost/callback"},
+			"",
+		},
+		{
 			"ShouldRefuseDocumentWithOnlyLocalhost",
 			metadata("https://loopback.example/c.json", "native", "http://localhost/callback", "http://localhost:9000/callback"),
 			[]string{"http://localhost/callback", "http://localhost:9000/callback"},
