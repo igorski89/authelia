@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -105,13 +106,10 @@ func TestClientIDMetadataDocumentsVendorDocuments(t *testing.T) {
 	provider.ClientIDMetadataDocuments.HTTPClient.HTTPClient.Transport = vendorDocumentTransport{}
 
 	// Claude Code's document declares http loopback redirects without the 'native' application_type, which the
-	// library refuses for the default 'web' type. The opencode and pi documents are native, but they also list
-	// 'http://localhost/callback', which the library refuses for native clients too, as only the loopback IP literals
-	// are loopback redirects (RFC 8252 Section 8.3).
+	// library refuses for the default 'web' type. The opencode and pi documents are native and also list
+	// 'http://localhost/callback', which is dropped as they send 127.0.0.1.
 	refused := map[string]string{
 		"https://claude.ai/oauth/claude-code-client-metadata": "must use the 'https' scheme.",
-		"https://opencode.ai/oauth/opencode/client.json":      "for the 'native' 'application_type'",
-		"https://pi.dev/oauth/client.json":                    "for the 'native' 'application_type'",
 	}
 
 	for id := range vendorClientIDMetadataDocuments {
@@ -145,5 +143,5 @@ func vendorRedirectURIs(t *testing.T, id string) []string {
 
 	require.NoError(t, json.Unmarshal([]byte(vendorClientIDMetadataDocuments[id]), &document))
 
-	return document.RedirectURIs
+	return slices.DeleteFunc(document.RedirectURIs, func(uri string) bool { return strings.HasPrefix(uri, "http://localhost") })
 }

@@ -77,6 +77,87 @@ func TestClientIDMetadataDocumentsRule(t *testing.T) {
 	}
 }
 
+func TestClientIDMetadataDocumentsFilter(t *testing.T) {
+	documents := newTestClientIDMetadataDocuments(
+		schema.IdentityProvidersOpenIDConnectClientIDMetadataDocumentRule{Domain: "loopback.example", AllowLoopbackRedirectURIs: true},
+		schema.IdentityProvidersOpenIDConnectClientIDMetadataDocumentRule{Domain: "web.example"},
+	)
+
+	metadata := func(id, app string, redirects ...string) *oauthelia2.ClientRegistrationMetadata {
+		return &oauthelia2.ClientRegistrationMetadata{
+			ApplicationType: app,
+			RedirectURIs:    redirects,
+			Extra:           map[string]any{"client_id": id},
+		}
+	}
+
+	testCases := []struct {
+		name     string
+		have     *oauthelia2.ClientRegistrationMetadata
+		expected []string
+		err      string
+	}{
+		{
+			"ShouldDropLocalhostOfNativeDocument",
+			metadata("https://loopback.example/c.json", "native", "http://127.0.0.1/callback", "http://localhost/callback", "http://LOCALHOST:8080/cb"),
+			[]string{"http://127.0.0.1/callback"},
+			"",
+		},
+		{
+			"ShouldKeepDocumentWithoutLocalhost",
+			metadata("https://loopback.example/c.json", "native", "http://127.0.0.1/callback", "https://loopback.example/cb"),
+			[]string{"http://127.0.0.1/callback", "https://loopback.example/cb"},
+			"",
+		},
+		{
+			"ShouldNotChangeWebDocument",
+			metadata("https://loopback.example/c.json", "", "http://127.0.0.1/callback", "http://localhost/callback"),
+			[]string{"http://127.0.0.1/callback", "http://localhost/callback"},
+			"",
+		},
+		{
+			"ShouldNotChangeDocumentOfRuleWithoutLoopback",
+			metadata("https://web.example/c.json", "native", "http://127.0.0.1/callback", "http://localhost/callback"),
+			[]string{"http://127.0.0.1/callback", "http://localhost/callback"},
+			"",
+		},
+		{
+			"ShouldNotChangeDocumentWithoutRule",
+			metadata("https://other.example/c.json", "native", "http://localhost/callback"),
+			[]string{"http://localhost/callback"},
+			"",
+		},
+		{
+			"ShouldNotDropHTTPSLocalhost",
+			metadata("https://loopback.example/c.json", "native", "http://127.0.0.1/callback", "https://localhost/callback"),
+			[]string{"http://127.0.0.1/callback", "https://localhost/callback"},
+			"",
+		},
+		{
+			"ShouldRefuseDocumentWithOnlyLocalhost",
+			metadata("https://loopback.example/c.json", "native", "http://localhost/callback", "http://localhost:9000/callback"),
+			[]string{"http://localhost/callback", "http://localhost:9000/callback"},
+			"The client's only redirect URIs are on 'localhost'",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := documents.FilterClientRegistrationMetadata(context.Background(), nil, tc.have)
+
+			if tc.err == "" {
+				assert.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, oauthelia2.ErrInvalidClientMetadata)
+				assert.Contains(t, oauthelia2.ErrorToDebugRFC6749Error(err).Error(), tc.err)
+			}
+
+			assert.Equal(t, tc.expected, tc.have.RedirectURIs)
+		})
+	}
+}
+
 func TestClientIDMetadataDocumentsNewClient(t *testing.T) {
 	documents := newTestClientIDMetadataDocuments(
 		schema.IdentityProvidersOpenIDConnectClientIDMetadataDocumentRule{Domain: "claude.ai", SubjectTokenClientsSupported: []string{"gateway"}},

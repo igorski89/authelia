@@ -121,6 +121,7 @@ func NewClientIDMetadataDocuments(config *schema.IdentityProvidersOpenIDConnect,
 		Validators:               []oauthelia2.ClientRegistrationValidator{rfc7591.NewLocalMetadataDocumentValidator(oidc), cimd.RedirectURISameOriginValidator{}},
 		ValidatorConfig:          oidc,
 		Strategy:                 documents,
+		Filter:                   documents,
 		Scopes:                   scopes,
 		GrantTypes:               []string{GrantTypeAuthorizationCode, GrantTypeRefreshToken},
 		ResponseTypes:            []string{ResponseTypeAuthorizationCodeFlow},
@@ -267,6 +268,49 @@ func (d *ClientIDMetadataDocuments) NewClient(_ context.Context, record *oauthel
 	}
 
 	return &MetadataDocumentClient{RegisteredClient: registered, Host: parsed.Host, Loopback: loopback, permitted: slices.Clone(rule.SubjectTokenClientsSupported)}, nil
+}
+
+// FilterClientRegistrationMetadata drops the 'http://localhost' redirect URIs of a 'native' document whose rule permits
+// loopback redirect URIs, before the library validates it. Several apps list 'http://localhost/callback' beside
+// 'http://127.0.0.1/callback' and send the latter, and the library refuses the whole document for a 'localhost'
+// redirect URI (RFC 8252 Section 8.3). The redirect URIs left must match as before, so a client which sends a
+// 'localhost' redirect URI is refused at the authorization endpoint. A document left without a redirect URI is
+// refused. This implements oauthelia2.ClientRegistrationMetadataStrategy.
+func (d *ClientIDMetadataDocuments) FilterClientRegistrationMetadata(_ context.Context, _ oauthelia2.Client, metadata *oauthelia2.ClientRegistrationMetadata) (err error) {
+	if metadata == nil || metadata.ApplicationType != ApplicationTypeNative {
+		return nil
+	}
+
+	id, _ := metadata.Extra[ClaimClientIdentifier].(string)
+
+	parsed, err := url.Parse(id)
+	if err != nil {
+		return nil
+	}
+
+	if rule := d.Rule(parsed.Hostname()); rule == nil || !rule.AllowLoopbackRedirectURIs {
+		return nil
+	}
+
+	redirects := slices.DeleteFunc(slices.Clone(metadata.RedirectURIs), func(raw string) bool {
+		u, perr := url.Parse(raw)
+
+		return perr == nil && u.Scheme == "http" && strings.EqualFold(u.Hostname(), "localhost")
+	})
+
+	if len(redirects) == len(metadata.RedirectURIs) {
+		return nil
+	}
+
+	if len(redirects) == 0 {
+		return oauthelia2.ErrInvalidClientMetadata.WithHint("The client's only redirect URIs are on 'localhost', which isn't supported; use the loopback address '127.0.0.1'.")
+	}
+
+	logging.Logger().WithFields(map[string]any{"client_id": id, "redirect_uris": redirects}).Debug("Client ID Metadata Document: its 'localhost' redirect URIs are ignored")
+
+	metadata.RedirectURIs = redirects
+
+	return nil
 }
 
 func copyClientIDMetadataDocumentRuleClient(client schema.IdentityProvidersOpenIDConnectClient) schema.IdentityProvidersOpenIDConnectClient {

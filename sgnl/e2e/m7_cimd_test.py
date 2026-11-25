@@ -46,6 +46,9 @@ DOCUMENTS = {
     '/web.json': document(WEB, [ORIGIN + '/cb']),
     '/big.json': document(ORIGIN + '/big.json', [REDIRECT], application_type='native', padding='x' * 8000),
     '/wrong-id.json': document(ORIGIN + '/other.json', [REDIRECT], application_type='native'),
+    # Like opencode's and pi's documents: 127.0.0.1 and localhost, and the app sends 127.0.0.1.
+    '/both.json': document(ORIGIN + '/both.json', [REDIRECT, 'http://localhost/callback'], application_type='native'),
+    '/localhost.json': document(ORIGIN + '/localhost.json', ['http://localhost/callback'], application_type='native'),
 }
 for n in range(8):
     DOCUMENTS[f'/many{n}.json'] = document(f'{ORIGIN}/many{n}.json', [REDIRECT], application_type='native')
@@ -215,6 +218,12 @@ _, _, location = authorize(CLAUDE, redirect_uri='http://127.0.0.1:40000/callback
 check('a loopback redirect URI of the document on another port is accepted (RFC 8252 Section 7.3)', not refused(location), location)
 _, _, location = authorize(WEB, redirect_uri=ORIGIN + '/cb')
 check('a web document with a redirect URI on localhost is refused', refused(location), location)
+_, _, location = authorize(ORIGIN + '/both.json', redirect_uri='http://127.0.0.1:40001/callback', consent=False)
+check('a native document also listing localhost is accepted for its 127.0.0.1 redirect URI', not refused(location), location)
+_, _, location = authorize(ORIGIN + '/both.json', redirect_uri='http://localhost:40001/callback')
+check('its localhost redirect URI is refused (only loopback IP literals, RFC 8252 Section 8.3)', refused(location), location)
+_, _, location = authorize(ORIGIN + '/localhost.json', redirect_uri='http://localhost:40001/callback')
+check('a native document with only localhost redirect URIs is refused', refused(location), location)
 _, _, location = authorize(CLAUDE, scope='openid authelia.bearer.authz')
 check('a scope outside the rule is refused', refused(location), location)
 
