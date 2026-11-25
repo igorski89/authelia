@@ -78,6 +78,12 @@ Every feature the fork adds or changes, with the upstream files it touches. Each
 Fork-only build files: `FORK.md`, `sgnl/` (image, CI scripts, the end-to-end tests in `sgnl/e2e/`, and the browser test in
 `sgnl/e2e/browser/`, run by hand as it needs Chrome and Docker), `.github/workflows/sgnl-*.yml`, `.github/actions/sgnl-checkout/`.
 
+## License
+
+Apache-2.0, the same as upstream. Authelia's copyright and license notices are kept unchanged. The fork's changes
+are listed under "Changes from upstream" above, together with the upstream files each one changes, and in full in
+the git history. That list is the notice of modified files required by Section 4(b) of the license.
+
 ## Backlog
 
 Planned work that isn't started yet.
