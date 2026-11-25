@@ -22,13 +22,15 @@ import (
 	"github.com/authelia/authelia/v4/internal/oidc"
 )
 
-// A dated snapshot: the Client ID Metadata Documents the AI apps published on 2026-11-25, verbatim. It shows which
+// A dated snapshot: the Client ID Metadata Documents the AI apps published on 2026-11-25 (opencode 2.4.1, pi 1.6.0), verbatim. It shows which
 // of them the resolver accepts as they are, and the client it builds from each. The apps may change their documents.
 var vendorClientIDMetadataDocuments = map[string]string{
 	"https://claude.ai/oauth/mcp-oauth-client-metadata":   `{"client_id":"https://claude.ai/oauth/mcp-oauth-client-metadata","client_name":"Claude","client_uri":"https://claude.ai","redirect_uris":["https://claude.ai/api/mcp/auth_callback"],"grant_types":["authorization_code","refresh_token","urn:ietf:params:oauth:grant-type:jwt-bearer"],"response_types":["code"],"token_endpoint_auth_method":"none"}`,
 	"https://claude.ai/oauth/claude-code-client-metadata": `{"client_id":"https://claude.ai/oauth/claude-code-client-metadata","client_name":"Claude Code","client_uri":"https://claude.ai","redirect_uris":["http://localhost/callback","http://127.0.0.1/callback"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none"}`,
 	"https://chatgpt.com/oauth/client.json":               `{"client_id":"https://chatgpt.com/oauth/client.json","client_uri":"https://chatgpt.com/","redirect_uris":["https://chatgpt.com/connector_platform_oauth_redirect"],"token_endpoint_auth_method":"private_key_jwt","token_endpoint_auth_methods_supported":["none","private_key_jwt"],"grant_types":["authorization_code","refresh_token","urn:ietf:params:oauth:grant-type:jwt-bearer"],"response_types":["code"],"client_name":"ChatGPT","logo_uri":"https://persistent.oaistatic.com/sonic/misc/openai-logo.png","token_endpoint_auth_signing_alg":"RS256","jwks_uri":"https://chatgpt.com/oauth/jwks.json"}`,
 	"https://vscode.dev/oauth/client-metadata.json":       `{"client_name":"Visual Studio Code","logo_uri":"https://code.visualstudio.com/assets/branding/code-stable.png","grant_types":["authorization_code","refresh_token","urn:ietf:params:oauth:grant-type:device_code"],"response_types":["code"],"token_endpoint_auth_method":"none","application_type":"native","client_id":"https://vscode.dev/oauth/client-metadata.json","client_uri":"https://vscode.dev/product","redirect_uris":["http://127.0.0.1:33418/","https://vscode.dev/redirect"]}`,
+	"https://opencode.ai/oauth/opencode/client.json":      `{"client_id":"https://opencode.ai/oauth/opencode/client.json","client_name":"opencode","client_uri":"https://opencode.ai","logo_uri":"https://opencode.ai/web-app-manifest-512x512.png","application_type":"native","redirect_uris":["http://127.0.0.1/callback","http://localhost/callback","http://127.0.0.1/mcp/oauth/callback"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","token_endpoint_auth_methods_supported":["none"]}`,
+	"https://pi.dev/oauth/client.json":                    `{"client_id":"https://pi.dev/oauth/client.json","client_name":"pi","client_uri":"https://pi.dev","logo_uri":"https://pi.dev/logo.svg","application_type":"native","redirect_uris":["http://127.0.0.1/callback","http://localhost/callback"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","token_endpoint_auth_methods_supported":["none"]}`,
 }
 
 type vendorDocumentTransport struct{}
@@ -82,6 +84,8 @@ func TestClientIDMetadataDocumentsVendorDocuments(t *testing.T) {
 						rule("claude.ai", true),
 						rule("chatgpt.com", false),
 						rule("vscode.dev", true),
+						rule("opencode.ai", true),
+						rule("pi.dev", true),
 					},
 				},
 			},
@@ -101,9 +105,13 @@ func TestClientIDMetadataDocumentsVendorDocuments(t *testing.T) {
 	provider.ClientIDMetadataDocuments.HTTPClient.HTTPClient.Transport = vendorDocumentTransport{}
 
 	// Claude Code's document declares http loopback redirects without the 'native' application_type, which the
-	// library refuses for the default 'web' type. Claude Code logs in with a registered client instead.
+	// library refuses for the default 'web' type. The opencode and pi documents are native, but they also list
+	// 'http://localhost/callback', which the library refuses for native clients too, as only the loopback IP literals
+	// are loopback redirects (RFC 8252 Section 8.3).
 	refused := map[string]string{
-		"https://claude.ai/oauth/claude-code-client-metadata": "must use the 'https' scheme",
+		"https://claude.ai/oauth/claude-code-client-metadata": "must use the 'https' scheme.",
+		"https://opencode.ai/oauth/opencode/client.json":      "for the 'native' 'application_type'",
+		"https://pi.dev/oauth/client.json":                    "for the 'native' 'application_type'",
 	}
 
 	for id := range vendorClientIDMetadataDocuments {
@@ -117,7 +125,7 @@ func TestClientIDMetadataDocumentsVendorDocuments(t *testing.T) {
 				return
 			}
 
-			require.NoError(t, err)
+			require.NoError(t, err, oauthelia2.ErrorToDebugRFC6749Error(err))
 
 			c, ok := client.(*oidc.MetadataDocumentClient)
 			require.True(t, ok)
